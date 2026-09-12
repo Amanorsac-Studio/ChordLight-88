@@ -37,25 +37,18 @@ portable:
 
 mac:
   target:
-    - target: dmg
-      arch: [universal]
     - target: zip
       arch: [universal]
   icon: build/icon.png
   category: public.app-category.music
   darkModeSupport: true
-  hardenedRuntime: true
+  hardenedRuntime: false
+  identity: null
   gatekeeperAssess: false
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
-  artifactName: Chordlight-88-${version}-mac-${arch}.${ext}
+  artifactName: Chordlight-88-${version}-mac.${ext}
   extendInfo:
     NSHumanReadableCopyright: © 2026 Amanorsac Studio
     LSMinimumSystemVersion: '11.0'
-
-dmg:
-  title: Chordlight 88 ${version}
-  artifactName: Chordlight-88-${version}.${ext}
 
 linux:
   target: [AppImage]
