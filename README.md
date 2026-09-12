@@ -16,8 +16,8 @@ Amanorsac Studio · Windows and macOS · Electron.
 - **Chord readout** — root, quality, slash bass, and the notes sounding.
 - **Number readout** — the Nashville number in the current key (Fmaj9 in C reads
   `4maj9`), with the Roman numeral and sol-fa syllable underneath.
-- **Two pop-out windows** — chord and number, independently, always on top, and on
-  macOS they float over full-screen apps.
+- **Three pop-out windows** — chord, number and keys, each into its own always-on-top
+  window, each docking back on its own. On macOS they float over full-screen apps.
 - **Notes / Sol-fa / Off** labelling. The sol-fa ladder is
   Do Di Re Mo Mi Fa Fi So Si La Ta Ti.
 - **Six accent colours and light/dark**, with the whole UI retinted from the accent.
@@ -25,8 +25,11 @@ Amanorsac Studio · Windows and macOS · Electron.
   the same controller at the same time. Virtual cables (loopMIDI, LoopBe, IAC) appear
   like any hardware port, and hot-plugged devices show up without a restart.
 
-Settings live at `Documents/Amanorsac Studio/Chordlight 88/settings.json`, per the
-Amanorsac Studio data-path convention.
+Preferences live at `Documents/Amanorsac Studio/Chordlight 88/preferences.json`, per the
+Amanorsac Studio data-path convention. Window positions are machine state, not
+preferences, so they sit separately in `AppData/Amanorsac Studio/Chordlight 88/window-state.json`.
+
+Marketing copy and screenshots for 1.0.0 are in `marketing/`.
 
 ---
 

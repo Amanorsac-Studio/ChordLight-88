@@ -302,8 +302,14 @@ body[data-view="number"] .readout{
 }
 body[data-view="chord"] .readout button,
 body[data-view="number"] .readout button{-webkit-app-region:no-drag}
+/* The readout fills whatever window it is given. Scaled by the smaller of
+   width and height so a short, wide overlay and a tall one both read large,
+   and still left-aligned — centring would make the text slide sideways as
+   the chord changes, which is exactly what a screen recording must not do. */
 body[data-view="chord"] .big,
-body[data-view="number"] .big{font-size:clamp(40px,13vh,96px)}
+body[data-view="number"] .big{font-size:min(26vh,15vw,110px)}
+body[data-view="chord"] .eyebrow,
+body[data-view="number"] .eyebrow{font-size:clamp(8px,1.7vh,11px)}
 
 /* ============================================================
    About screen — Product Build Standard B31
