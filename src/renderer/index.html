@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:;">
+<title>Chordlight 88</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+
+  <div class="titlebar raised">
+    <div class="logo">
+      <div class="bars" aria-hidden="true">
+        <i style="height:7px"></i><i style="height:13px"></i><i style="height:19px"></i><i style="height:11px"></i><i style="height:16px"></i><i style="height:6px"></i>
+      </div>
+      <div class="wordmark"><b>Chordlight 88</b><span>Amanorsac Studio</span></div>
+    </div>
+    <div class="seg" id="labelseg" role="group" aria-label="Note labels">
+      <button type="button" data-mode="notes" aria-pressed="true">Notes</button>
+      <button type="button" data-mode="solfa" aria-pressed="false">Sol-fa</button>
+      <button type="button" data-mode="off" aria-pressed="false">Off</button>
+    </div>
+    <div class="tbstat"><span class="led"></span><span id="tbport">Scanning…</span></div>
+    <button class="btn icon push" id="modebtn" type="button" title="Light / dark">☾</button>
+    <button class="btn" id="setupbtn" type="button" aria-expanded="false" aria-controls="setup">⚙ Setup</button>
+    <div class="wbtn">
+      <button type="button" data-win="minimize" aria-label="Minimize">—</button>
+      <button type="button" data-win="maximize" aria-label="Maximize">▢</button>
+      <button type="button" data-win="close" class="close" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <div class="deck" id="deck">
+
+    <section class="card readout raised" id="chordcard">
+      <button class="btn poptab" type="button" data-pop="chord" title="Pop it out">⇱</button>
+      <div class="eyebrow"><span class="led"></span><span>Chord</span></div>
+      <div class="big" id="chord">—</div>
+      <div class="chordmeta" id="meta"></div>
+    </section>
+
+    <section class="card readout raised" id="numcard">
+      <button class="btn poptab" type="button" data-pop="number" title="Pop it out">⇱</button>
+      <div class="eyebrow"><span class="led"></span><span id="numeyebrow">Number · key of C</span></div>
+      <div class="big" id="num">—</div>
+      <div class="sub" id="roman"></div>
+    </section>
+
+    <aside class="card ctrlcard raised">
+      <div>
+        <label class="fld" for="keysel">Key center</label>
+        <select id="keysel">
+          <option>C</option><option>Db</option><option>D</option><option>Eb</option><option>E</option><option>F</option>
+          <option>Gb</option><option>G</option><option>Ab</option><option>A</option><option>Bb</option><option>B</option>
+        </select>
+      </div>
+      <div>
+        <label class="fld" for="spell">Spelling</label>
+        <select id="spell">
+          <option value="auto">Auto (from key)</option>
+          <option value="sharp">Sharps</option>
+          <option value="flat">Flats</option>
+        </select>
+      </div>
+    </aside>
+
+  </div>
+
+  <div class="bedwrap well">
+    <div class="stage">
+      <div class="namerow" id="namerow"></div>
+      <div class="felt"></div>
+      <div class="keybed" id="bed"></div>
+    </div>
+  </div>
+
+  <div class="status raised" id="setup" hidden>
+    <div class="grp">
+      <label class="fld" for="port">MIDI input</label>
+      <select id="port"><option>Scanning for inputs…</option></select>
+    </div>
+    <div class="grp">
+      <label class="fld" for="ch">Channel</label>
+      <select id="ch">
+        <option>Omni</option><option>1</option><option>2</option><option>3</option><option>4</option>
+        <option>5</option><option>6</option><option>7</option><option>8</option>
+        <option>9</option><option>10</option><option>11</option><option>12</option>
+        <option>13</option><option>14</option><option>15</option><option>16</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label class="fld">Colour</label>
+      <div class="swatches" id="swatches" role="group" aria-label="Accent colour"></div>
+    </div>
+    <div class="grp">
+      <label class="fld">Velocity</label>
+      <div class="vmeter"><i id="vbar"></i></div>
+    </div>
+    <div class="grp">
+      <label class="fld" for="ksize">Key size</label>
+      <input type="range" id="ksize" min="140" max="280" value="188">
+    </div>
+    <div class="spacer"></div>
+    <span class="badge" id="portbadge">Non-exclusive</span>
+    <span class="badge" id="sustbadge">Sustain off</span>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

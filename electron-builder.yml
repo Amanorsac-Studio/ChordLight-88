@@ -1,0 +1,79 @@
+appId: studio.amanorsac.chordlight88
+productName: Chordlight 88
+copyright: © 2026 Amanorsac Studio
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+  - '!**/*.map'
+
+# ---------------------------------------------------------------- Windows
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.png
+  artifactName: Chordlight-88-${version}-win-${arch}.${ext}
+  # Signing: set WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD in CI.
+  # Without them the build is unsigned and SmartScreen will warn on first run.
+  signAndEditExecutable: true
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Chordlight 88
+  installerIcon: build/icon.png
+  uninstallerIcon: build/icon.png
+  installerHeaderIcon: build/icon.png
+  deleteAppDataOnUninstall: false
+  artifactName: Chordlight-88-${version}-Setup.${ext}
+
+portable:
+  artifactName: Chordlight-88-${version}-portable.${ext}
+
+# ---------------------------------------------------------------- macOS
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+  icon: build/icon.png
+  category: public.app-category.music
+  darkModeSupport: true
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: Chordlight-88-${version}-mac-${arch}.${ext}
+  extendInfo:
+    NSHumanReadableCopyright: © 2026 Amanorsac Studio
+    LSMinimumSystemVersion: '11.0'
+
+dmg:
+  title: Chordlight 88 ${version}
+  artifactName: Chordlight-88-${version}.${ext}
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+
+# ---------------------------------------------------------------- Linux (dev only)
+linux:
+  target: [AppImage]
+  icon: build/icon.png
+  category: Audio
