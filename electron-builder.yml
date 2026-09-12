@@ -71,7 +71,10 @@ mac:
   #
   # Set identity to false and hardenedRuntime to false for a local unsigned
   # build; CI always signs.
-  identity: 'Developer ID Application: Stephen Amanor Sackey (SGQVTNFK4Q)'
+  # Name only — electron-builder adds the "Developer ID Application:"
+  # prefix itself when it searches the keychain, and rejects a name that
+  # already carries one (macCodeSign.js, checkPrefix).
+  identity: 'Stephen Amanor Sackey (SGQVTNFK4Q)'
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
