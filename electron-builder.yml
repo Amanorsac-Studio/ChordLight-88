@@ -55,11 +55,30 @@ mac:
   icon: build/icon.png
   category: public.app-category.music
   darkModeSupport: true
+
+  # Signed, notarised and stapled per the macOS Code Signing & Notarisation
+  # Standard (proven on SecondOut 1.3.2). The certificates are company-wide;
+  # only the product name differs.
+  #
+  #   identity          Developer ID Application — the notarisable pair. The
+  #                     App Store certs cannot notarise and make codesign's
+  #                     identity matching ambiguous, so they are never imported.
+  #   hardenedRuntime   required for notarisation
+  #   entitlements      Electron's JIT needs; never get-task-allow
+  #   notarize          electron-builder submits with the App Store Connect API
+  #                     key from APPLE_API_KEY / _KEY_ID / _ISSUER and fails the
+  #                     build on any status other than Accepted
+  #
+  # Set identity to false and hardenedRuntime to false for a local unsigned
+  # build; CI always signs.
+  identity: 'Developer ID Application: Stephen Amanor Sackey (SGQVTNFK4Q)'
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  artifactName: Chordlight-88-${version}-mac-${arch}.${ext}
+  notarize: true
+  timestamp: http://timestamp.apple.com/ts01
+  artifactName: Chordlight-88-${version}-mac.${ext}
   extendInfo:
     NSHumanReadableCopyright: © 2026 Amanorsac Studio
     LSMinimumSystemVersion: '11.0'

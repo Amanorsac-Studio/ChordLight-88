@@ -2,11 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- Electron needs these three under the hardened runtime: V8 JITs, and the
+       framework loads its own unsigned-at-rest pages. -->
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
-  <key>com.apple.security.device.audio-input</key>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
   <true/>
+
+  <!-- Electron's helper bundles are signed separately from the framework. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- Deliberately absent:
+       com.apple.security.get-task-allow — a debug entitlement. Apple returns
+       "status: Invalid" with no explanation if it ships (macOS Signing
+       Standard §5).
+       com.apple.security.device.audio-input — Chordlight reads MIDI, never
+       audio, so it must not ask for the microphone. -->
 </dict>
 </plist>
