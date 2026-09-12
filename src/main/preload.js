@@ -23,5 +23,7 @@ contextBridge.exposeInMainWorld('chordlight', {
   windowControl: (action) => ipcRenderer.send('window:control', action),
   onMaximized: (cb) => ipcRenderer.on('window:maximized', (_e, v) => cb(v)),
 
+  openExternal: (url) => ipcRenderer.send('open:external', url),
+
   appInfo: () => ipcRenderer.invoke('app:info')
 });

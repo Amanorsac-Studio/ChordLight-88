@@ -11,6 +11,13 @@ files:
   - package.json
   - '!**/*.map'
 
+# The About screen tells the user these sit beside the application (B31, B39).
+extraFiles:
+  - THIRD_PARTY_NOTICES.md
+  - LICENSE
+  - CHANGELOG.md
+
+# ---------------------------------------------------------------- Windows
 win:
   target:
     - target: nsis
@@ -19,6 +26,9 @@ win:
       arch: [x64]
   icon: build/icon.png
   artifactName: Chordlight-88-${version}-win-${arch}.${ext}
+  publisherName: Amanorsac Studio
+  # Signing: set WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD in CI.
+  # Without them the build is unsigned and SmartScreen will warn on first run.
   signAndEditExecutable: true
 
 nsis:
@@ -35,22 +45,35 @@ nsis:
 portable:
   artifactName: Chordlight-88-${version}-portable.${ext}
 
+# ---------------------------------------------------------------- macOS
 mac:
   target:
+    - target: dmg
+      arch: [universal]
     - target: zip
       arch: [universal]
   icon: build/icon.png
   category: public.app-category.music
   darkModeSupport: true
-  hardenedRuntime: false
-  identity: null
+  hardenedRuntime: true
   gatekeeperAssess: false
-  artifactName: Chordlight-88-${version}-mac.${ext}
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: Chordlight-88-${version}-mac-${arch}.${ext}
   extendInfo:
     NSHumanReadableCopyright: © 2026 Amanorsac Studio
     LSMinimumSystemVersion: '11.0'
 
+dmg:
+  title: Chordlight 88 ${version}
+  artifactName: Chordlight-88-${version}.${ext}
+
+# ---------------------------------------------------------------- Linux (dev only)
 linux:
   target: [AppImage]
   icon: build/icon.png
   category: Audio
+
+# B36 — Amanorsac Hub does installation and updates. This product ships no
+# updater and no version check, so no update metadata is published.
+publish: null

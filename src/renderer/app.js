@@ -283,6 +283,13 @@
     return best || { root: bassPc, q: '', bass: bassPc };
   }
 
+  const solfaOf = (pc) => SOLFA[degree(pc)];
+  function qualityWord(q) {
+    if (q === '') return 'major';
+    if (q === 'm') return 'minor';
+    return q;
+  }
+
   function romanOf(rt, q) {
     let base = ROMAN[degree(rt)];
     let suffix = q;
@@ -306,7 +313,8 @@
   function paint() {
     const notes = sounding();
     const ch = detect(notes), rootPc = ch ? ch.root : -1;
-    const eyebrow = 'Number · key of ' + keysel.value;
+    const solfaMode = (labelMode === 'solfa');
+    const eyebrow = (solfaMode ? 'Sol-fa · key of ' : 'Number · key of ') + keysel.value;
     if (!$('numcard').classList.contains('popped')) numEyebrow.textContent = eyebrow;
 
     /* everything the keybed needs, so the keys window mirrors it exactly */
@@ -333,14 +341,21 @@
       let chordHTML, numHTML, romanText;
       if (ch.single) {
         chordHTML = noteName(notes[0]);
-        numHTML = NUM[degree(ch.root)];
-        romanText = ROMAN[degree(ch.root)] + ' · ' + solfa(ch.root);
+        numHTML = solfaMode ? solfaOf(ch.root) : NUM[degree(ch.root)];
+        romanText = solfaMode
+          ? NUM[degree(ch.root)] + ' · ' + ROMAN[degree(ch.root)]
+          : ROMAN[degree(ch.root)] + ' · ' + solfaOf(ch.root);
       } else {
         const slashName = (ch.bass !== ch.root) ? `<span class="slash">/${pcName(ch.bass)}</span>` : '';
-        const slashNum = (ch.bass !== ch.root) ? `<span class="slash">/${NUM[degree(ch.bass)]}</span>` : '';
+        const slashNum = (ch.bass !== ch.root)
+          ? `<span class="slash">/${solfaMode ? solfaOf(ch.bass) : NUM[degree(ch.bass)]}</span>` : '';
         chordHTML = `${pcName(ch.root)}<span class="sup">${ch.q}</span>${slashName}`;
-        numHTML = `${NUM[degree(ch.root)]}<span class="sup">${ch.q}</span>${slashNum}`;
-        romanText = romanOf(ch.root, ch.q) + ' · ' + solfa(ch.root);
+        numHTML = solfaMode
+          ? `${solfaOf(ch.root)}<span class="sup word">${qualityWord(ch.q)}</span>${slashNum}`
+          : `${NUM[degree(ch.root)]}<span class="sup">${ch.q}</span>${slashNum}`;
+        romanText = solfaMode
+          ? NUM[degree(ch.root)] + ch.q + ' · ' + romanOf(ch.root, ch.q)
+          : romanOf(ch.root, ch.q) + ' · ' + solfaOf(ch.root);
       }
       const chips = [
         `<span class="pill note">${notes.map(noteName).join('  ·  ')}</span>`,
@@ -563,6 +578,23 @@
     else { try { localStorage.setItem('chordlight.settings', JSON.stringify(settingsCache)); } catch { /* ignore */ } }
   }
 
+  /* ---------- About screen ---------- */
+  const about = $('about'), aboutbtn = $('aboutbtn');
+  const openAbout = (open) => {
+    about.hidden = !open;
+    aboutbtn.classList.toggle('on', open);
+    if (open) $('aboutclose').focus(); else aboutbtn.focus();
+  };
+  aboutbtn.addEventListener('click', () => openAbout(about.hidden));
+  $('aboutclose').addEventListener('click', () => openAbout(false));
+  about.addEventListener('click', (e) => { if (e.target === about) openAbout(false); });
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !about.hidden) openAbout(false);
+  }, true);
+  about.querySelectorAll('[data-link]').forEach((b) => {
+    b.addEventListener('click', () => BRIDGE && BRIDGE.openExternal(b.dataset.link));
+  });
+
   const setup = $('setup'), setupbtn = $('setupbtn');
   setupbtn.addEventListener('click', () => {
     const open = setup.hidden;
@@ -596,6 +628,9 @@
       if (info.platform === 'darwin') document.body.classList.add('mac');
       const v = document.querySelector('.wordmark span');
       if (v) v.textContent = 'Amanorsac Studio · v' + info.version;
+      $('aboutversion').textContent = info.version;
+      $('aboutruntime').textContent = 'Electron ' + info.electron + ' · Chromium ' + info.chrome;
+      $('aboutprefs').textContent = info.preferencesFile;
     } else {
       try { settingsCache = JSON.parse(localStorage.getItem('chordlight.settings') || '{}'); } catch { settingsCache = {}; }
     }

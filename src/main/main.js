@@ -15,7 +15,7 @@ const popouts = { chord: null, number: null, keys: null };
 const POPOUT_SPEC = {
   chord:  { width: 430, height: 210, minWidth: 240, minHeight: 140 },
   number: { width: 400, height: 210, minWidth: 240, minHeight: 140 },
-  keys:   { width: 1180, height: 300, minWidth: 560, minHeight: 150 }
+  keys:   { width: 1320, height: 268, minWidth: 860, minHeight: 200 }
 };
 
 /* Last published readout, so a pop-out opened mid-song paints immediately. */
@@ -192,8 +192,21 @@ ipcMain.handle('app:info', () => ({
   platform: process.platform,
   electron: process.versions.electron,
   chrome: process.versions.chrome,
-  settingsFile: settings.FILE
+  preferencesFile: settings.PREF_FILE,
+  windowStateFile: settings.STATE_FILE
 }));
+
+/* The About screen's links. Only the studio's own pages and its support
+   address are ever opened, and only in the user's real browser. */
+const ALLOWED_LINKS = new Set([
+  'https://amanorsac.studio',
+  'https://amanorsac.studio/legal',
+  'https://amanorsac.studio/privacy',
+  'mailto:hello@amanorsac.studio'
+]);
+ipcMain.on('open:external', (_e, url) => {
+  if (ALLOWED_LINKS.has(url)) shell.openExternal(url);
+});
 
 /* ------------------------------------------------------------------ *
  * Lifecycle

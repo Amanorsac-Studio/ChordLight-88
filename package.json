@@ -20,10 +20,10 @@
     "dist:dir": "electron-builder --dir"
   },
   "devDependencies": {
-    "@fontsource/barlow-condensed": "^5.0.0",
-    "@fontsource/inter": "^5.0.0",
-    "@fontsource/jetbrains-mono": "^5.0.0",
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "@fontsource/barlow-condensed": "5.0.20",
+    "@fontsource/inter": "5.1.0",
+    "@fontsource/jetbrains-mono": "5.1.1",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
   }
 }

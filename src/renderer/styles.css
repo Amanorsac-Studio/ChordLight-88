@@ -105,6 +105,7 @@ body[data-view="full"] .card.floating{
   min-height:.92em;white-space:nowrap;overflow:hidden;
 }
 .big .sup{font-size:.48em;vertical-align:.46em;color:var(--acc-txt)}
+.big .sup.word{margin-left:.16em;letter-spacing:.005em}
 .big .slash{color:var(--text-dim);font-weight:600}
 .big.empty{color:var(--text-faint);text-shadow:none;font-family:var(--font-d);font-size:clamp(18px,2.4vw,24px);font-weight:500;letter-spacing:0;align-content:center}
 .sub{
@@ -267,16 +268,15 @@ body[data-view="keys"] .deck,
 body[data-view="keys"] .status{display:none}
 body[data-view="keys"] .app{padding:0;gap:0;height:100%;max-width:none}
 body[data-view="keys"] .bedwrap{
-  height:100%;border-radius:0;border:0;padding:8px 10px 10px;
-  display:flex;flex-direction:column;
+  height:100%;border-radius:0;border:0;padding:8px 12px 10px;
   -webkit-app-region:drag;
 }
 body[data-view="keys"] .bedwrap button{-webkit-app-region:no-drag}
 body[data-view="keys"] .keyeyebrow{display:none}
-body[data-view="keys"] .stage{
-  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;
-}
-body[data-view="keys"] .keybed{flex:1 1 auto;height:auto;min-height:70px}
+/* the keys keep the size they have in the main window — the window does not
+   squash them. Only the docked key-size slider changes their height. */
+body[data-view="keys"] .stage{min-width:820px}
+body[data-view="keys"] .keybed{height:var(--kh,188px)}
 
 body[data-view="chord"] .titlebar,
 body[data-view="chord"] #numcard,
@@ -304,3 +304,54 @@ body[data-view="chord"] .readout button,
 body[data-view="number"] .readout button{-webkit-app-region:no-drag}
 body[data-view="chord"] .big,
 body[data-view="number"] .big{font-size:clamp(40px,13vh,96px)}
+
+/* ============================================================
+   About screen — Product Build Standard B31
+   ============================================================ */
+.scrim{
+  position:fixed;inset:0;z-index:200;
+  display:grid;place-items:center;padding:20px;
+  background:color-mix(in srgb,var(--void) 72%,transparent);
+  backdrop-filter:blur(6px);
+}
+.aboutbox{
+  position:relative;width:min(520px,100%);max-height:calc(100vh - 40px);overflow-y:auto;
+  padding:22px 24px 20px;border-radius:11px;
+}
+.closebtn{position:absolute;top:12px;right:12px;padding:6px 9px}
+.lockup{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.lockup .bars{height:25px}
+.lockup h2{
+  margin:0;font-size:19px;font-weight:700;letter-spacing:.02em;color:var(--chord);
+}
+.lockupsub{
+  margin:4px 0 0;font-family:var(--font-m);font-size:9px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--text-faint);
+}
+.factlist{
+  display:grid;grid-template-columns:auto 1fr;gap:7px 16px;margin:0 0 16px;
+  font-family:var(--font-m);font-size:11.5px;
+}
+.factlist dt{color:var(--text-faint);letter-spacing:.1em;text-transform:uppercase;font-size:9.5px;padding-top:2px}
+.factlist dd{margin:0;color:var(--text);word-break:break-word}
+.aboutnote{
+  margin:0 0 16px;font-size:12.5px;line-height:1.65;color:var(--text-dim);
+  padding:12px 14px;border-radius:7px;
+  background:var(--ctl-2);border:1px solid var(--edge);
+}
+.aboutlinks{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px}
+.notices{
+  font-size:12px;color:var(--text-dim);
+  border-top:1px solid var(--edge);padding-top:12px;
+}
+.notices summary{
+  cursor:pointer;font-family:var(--font-m);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--text-faint);
+}
+.notices summary:hover{color:var(--text-dim)}
+.notices ul{margin:10px 0 8px;padding-left:18px;line-height:1.8}
+.notices p{margin:0;color:var(--text-faint);font-size:11.5px}
+.copyright{
+  margin:14px 0 0;font-family:var(--font-m);font-size:10px;letter-spacing:.08em;
+  color:var(--text-faint);
+}

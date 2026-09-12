@@ -25,8 +25,9 @@
       <button type="button" data-mode="off" aria-pressed="false">Off</button>
     </div>
     <div class="tbstat"><span class="led"></span><span id="tbport">Scanning…</span></div>
-    <button class="btn icon push" id="modebtn" type="button" title="Light / dark">☾</button>
+    <button class="btn icon push" id="modebtn" type="button" title="Light / dark" aria-label="Switch between light and dark">☾</button>
     <button class="btn" id="setupbtn" type="button" aria-expanded="false" aria-controls="setup">⚙ Setup</button>
+    <button class="btn" id="aboutbtn" type="button" aria-haspopup="dialog">About</button>
     <div class="wbtn">
       <button type="button" data-win="minimize" aria-label="Minimize">—</button>
       <button type="button" data-win="maximize" aria-label="Maximize">▢</button>
@@ -37,14 +38,14 @@
   <div class="deck" id="deck">
 
     <section class="card readout raised" id="chordcard">
-      <button class="btn poptab" type="button" data-pop="chord" title="Pop it out">⇱</button>
+      <button class="btn poptab" type="button" data-pop="chord" title="Pop it out" aria-label="Pop the chord readout into its own window">⇱</button>
       <div class="eyebrow"><span class="led"></span><span id="chordeyebrow">Chord</span></div>
       <div class="big" id="chord">—</div>
       <div class="chordmeta" id="meta"></div>
     </section>
 
     <section class="card readout raised" id="numcard">
-      <button class="btn poptab" type="button" data-pop="number" title="Pop it out">⇱</button>
+      <button class="btn poptab" type="button" data-pop="number" title="Pop it out" aria-label="Pop the number readout into its own window">⇱</button>
       <div class="eyebrow"><span class="led"></span><span id="numeyebrow">Number · key of C</span></div>
       <div class="big" id="num">—</div>
       <div class="sub" id="roman"></div>
@@ -71,7 +72,7 @@
   </div>
 
   <section class="card bedwrap well" id="keycard">
-    <button class="btn poptab" type="button" data-pop="keys" title="Pop it out">⇱</button>
+    <button class="btn poptab" type="button" data-pop="keys" title="Pop it out" aria-label="Pop the keys into their own window">⇱</button>
     <div class="eyebrow keyeyebrow"><span class="led"></span><span id="keyeyebrow">Keys · 88 · A0 — C8</span></div>
     <div class="stage">
       <div class="namerow" id="namerow"></div>
@@ -112,6 +113,55 @@
   </div>
 
 </div>
+
+  <div class="scrim" id="about" hidden>
+    <section class="aboutbox raised" role="dialog" aria-modal="true" aria-labelledby="abouttitle">
+      <button class="btn closebtn" type="button" id="aboutclose" aria-label="Close">✕</button>
+
+      <div class="lockup">
+        <div class="bars" aria-hidden="true">
+          <i style="height:9px"></i><i style="height:17px"></i><i style="height:25px"></i><i style="height:14px"></i><i style="height:21px"></i><i style="height:8px"></i>
+        </div>
+        <div>
+          <h2 id="abouttitle">Chordlight 88</h2>
+          <p class="lockupsub">Amanorsac Studio</p>
+        </div>
+      </div>
+
+      <dl class="factlist">
+        <dt>Version</dt><dd id="aboutversion">—</dd>
+        <dt>Licence</dt><dd id="aboutlicence">Ships unlicensed — no activation, no account</dd>
+        <dt>Runtime</dt><dd id="aboutruntime">—</dd>
+        <dt>Preferences</dt><dd id="aboutprefs">—</dd>
+      </dl>
+
+      <p class="aboutnote">
+        Chordlight makes no network requests of any kind. It never reads your sessions or
+        presets, never sends audio or MIDI anywhere, and contains no analytics or telemetry.
+        Updates are handled by Amanorsac Hub, not by this app.
+      </p>
+
+      <div class="aboutlinks">
+        <button class="btn" type="button" data-link="https://amanorsac.studio/legal">Terms &amp; EULA</button>
+        <button class="btn" type="button" data-link="https://amanorsac.studio/privacy">Privacy</button>
+        <button class="btn" type="button" data-link="mailto:hello@amanorsac.studio">hello@amanorsac.studio</button>
+        <button class="btn" type="button" data-link="https://amanorsac.studio">amanorsac.studio</button>
+      </div>
+
+      <details class="notices">
+        <summary>Third-party notices</summary>
+        <ul>
+          <li><b>Electron</b> — MIT</li>
+          <li><b>Chromium</b> — BSD 3-Clause</li>
+          <li><b>Node.js</b> — MIT</li>
+          <li><b>Inter</b>, <b>JetBrains Mono</b>, <b>Barlow Condensed</b> — SIL Open Font License 1.1</li>
+        </ul>
+        <p>The complete list ships as THIRD_PARTY_NOTICES.md beside the application.</p>
+      </details>
+
+      <p class="copyright">© 2026 Amanorsac Studio. All rights reserved.</p>
+    </section>
+  </div>
 
 <script src="app.js"></script>
 </body>
