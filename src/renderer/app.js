@@ -1,12 +1,14 @@
 'use strict';
 /* Chordlight 88 — renderer
- * One file serves three views: the full window, and the two pop-out readouts.
- * Only the full view touches MIDI; the pop-outs render state published to them.
+ * One file serves four views: the full window, and three pop-outs
+ * (chord, number, keys). Only the full view touches MIDI; the pop-outs
+ * render the state published to them.
  */
 (function () {
   const BRIDGE = window.chordlight || null;
-  const VIEW = BRIDGE ? BRIDGE.view : 'full';
-  const FULL = VIEW === 'full';
+  const VIEW = BRIDGE ? BRIDGE.view
+    : (new URLSearchParams(location.search).get('view') || 'full');
+  const TEXT_VIEW = VIEW === 'chord' || VIEW === 'number';
   document.body.dataset.view = VIEW;
 
   const SH = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -84,8 +86,16 @@
     }
   }
 
-  /* ================= pop-out views ================= */
-  if (!FULL) {
+  const dockButtons = () => {
+    document.querySelectorAll('[data-pop]').forEach((b) => {
+      b.textContent = '⇲';
+      b.title = 'Dock it back';
+      b.addEventListener('click', () => BRIDGE.windowControl('close'));
+    });
+  };
+
+  /* ================= text pop-outs (chord / number) ================= */
+  if (TEXT_VIEW) {
     paintTheme();
     if (BRIDGE) {
       BRIDGE.onState((s) => {
@@ -103,16 +113,12 @@
           numEyebrow.textContent = s.numEyebrow;
         }
       });
-      document.querySelectorAll('[data-pop]').forEach((b) => {
-        b.textContent = '⇲';
-        b.title = 'Dock it back';
-        b.addEventListener('click', () => BRIDGE.windowControl('close'));
-      });
+      dockButtons();
     }
-    return; // pop-outs do nothing else
+    return;
   }
 
-  /* ================= build the 88 ================= */
+  /* ================= the 88 (full window and keys pop-out) ================= */
   const isBlack = (n) => [1, 3, 6, 8, 10].includes(n % 12);
   const whites = [];
   for (let n = LOW; n <= HIGH; n++) if (!isBlack(n)) whites.push(n);
@@ -131,6 +137,70 @@
       centerPct.set(n, wi * WW + WW / 2); wi++;
     }
     bed.appendChild(el); keyEls.set(n, el);
+  }
+
+  /* velocity colour */
+  const hex2rgb = (x) => [parseInt(x.slice(1, 3), 16), parseInt(x.slice(3, 5), 16), parseInt(x.slice(5, 7), 16)];
+  function velColor(v) {
+    const S = (ACCENTS[accent] || ACCENTS.blue).stops.map(hex2rgb);
+    const t = Math.min(1, Math.max(0, v / 127));
+    const seg = Math.min(2, Math.floor(t * 3)), f = t * 3 - seg;
+    return S[seg].map((c, i) => Math.round(c + (S[seg + 1][i] - c) * f));
+  }
+  const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+  /* Paints the keybed from a published state, so the keys pop-out mirrors
+     the main window exactly. */
+  function paintKeys(state) {
+    const vel = new Map(state.keys || []);
+    const rootPc = state.rootPc;
+    const multi = (state.keys || []).length > 1;
+    const cTags = state.cTags || {};
+
+    keyEls.forEach((el, n) => {
+      const on = vel.has(n);
+      el.classList.toggle('on', on);
+      el.classList.toggle('root', on && n % 12 === rootPc && multi);
+      const lbl = el.lastChild;
+      if (on) {
+        const v = vel.get(n);
+        const hi = velColor(Math.min(127, v + 26)), mid = velColor(v), lo = velColor(Math.max(14, v - 52));
+        el.style.setProperty('--vhi', rgb(hi));
+        el.style.setProperty('--vmid', rgb(mid));
+        el.style.setProperty('--vlo', rgb(lo));
+        el.style.setProperty('--vglow', `rgba(${mid[0]},${mid[1]},${mid[2]},.6)`);
+        el.style.setProperty('--vglow2', `rgba(${hi[0]},${hi[1]},${hi[2]},.26)`);
+        lbl.textContent = '';
+      } else {
+        lbl.textContent = cTags[n] || '';
+      }
+    });
+
+    nameRow.textContent = '';
+    (state.tags || []).forEach((tag, i) => {
+      const t = document.createElement('span'), row = i % 2;
+      t.className = 'nametag row' + row + (tag.b ? ' bass' : '');
+      t.style.left = centerPct.get(tag.n) + '%';
+      t.style.setProperty('--stem', (row ? 12 : 35) + 'px');
+      t.textContent = tag.t;
+      nameRow.appendChild(t);
+    });
+  }
+
+  /* ================= keys pop-out ================= */
+  if (VIEW === 'keys') {
+    paintTheme();
+    if (BRIDGE) {
+      BRIDGE.onState((s) => {
+        if (s.accent && ACCENTS[s.accent]) accent = s.accent;
+        if (s.mode) mode = s.mode;
+        if (s.keySize) bed.style.setProperty('--kh', s.keySize + 'px');
+        paintTheme();
+        paintKeys(s);
+      });
+      dockButtons();
+    }
+    return;
   }
 
   /* ================= naming ================= */
@@ -226,16 +296,6 @@
     return base + suffix;
   }
 
-  /* ================= velocity colour ================= */
-  const hex2rgb = (x) => [parseInt(x.slice(1, 3), 16), parseInt(x.slice(3, 5), 16), parseInt(x.slice(5, 7), 16)];
-  function velColor(v) {
-    const S = ACCENTS[accent].stops.map(hex2rgb);
-    const t = Math.min(1, Math.max(0, v / 127));
-    const seg = Math.min(2, Math.floor(t * 3)), f = t * 3 - seg;
-    return S[seg].map((c, i) => Math.round(c + (S[seg + 1][i] - c) * f));
-  }
-  const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
-
   /* ================= render ================= */
   function sounding() {
     const s = new Set(held.keys());
@@ -244,48 +304,27 @@
   }
 
   function paint() {
-    const notes = sounding(), set = new Set(notes);
+    const notes = sounding();
     const ch = detect(notes), rootPc = ch ? ch.root : -1;
     const eyebrow = 'Number · key of ' + keysel.value;
-    numEyebrow.textContent = eyebrow;
+    if (!$('numcard').classList.contains('popped')) numEyebrow.textContent = eyebrow;
 
-    keyEls.forEach((el, n) => {
-      const on = set.has(n);
-      el.classList.toggle('on', on);
-      el.classList.toggle('root', on && n % 12 === rootPc && notes.length > 1);
-      const lbl = el.lastChild;
-      if (on) {
-        const v = held.has(n) ? held.get(n) : 70;
-        const hi = velColor(Math.min(127, v + 26)), mid = velColor(v), lo = velColor(Math.max(14, v - 52));
-        el.style.setProperty('--vhi', rgb(hi));
-        el.style.setProperty('--vmid', rgb(mid));
-        el.style.setProperty('--vlo', rgb(lo));
-        el.style.setProperty('--vglow', `rgba(${mid[0]},${mid[1]},${mid[2]},.6)`);
-        el.style.setProperty('--vglow2', `rgba(${hi[0]},${hi[1]},${hi[2]},.26)`);
-        lbl.textContent = '';
-      } else {
-        lbl.textContent = (labelMode !== 'off' && n % 12 === 0) ? tagText(n) : '';
-      }
-    });
-
-    nameRow.textContent = '';
+    /* everything the keybed needs, so the keys window mirrors it exactly */
+    const keys = notes.map((n) => [n, held.has(n) ? held.get(n) : 70]);
+    const cTags = {};
     if (labelMode !== 'off') {
-      notes.forEach((n, i) => {
-        const t = document.createElement('span'), row = i % 2;
-        t.className = 'nametag row' + row + (i === 0 && notes.length > 1 ? ' bass' : '');
-        t.style.left = centerPct.get(n) + '%';
-        t.style.setProperty('--stem', (row ? 12 : 35) + 'px');
-        t.textContent = tagText(n);
-        nameRow.appendChild(t);
-      });
+      for (let n = LOW; n <= HIGH; n++) if (n % 12 === 0) cTags[n] = tagText(n);
     }
+    const tags = labelMode === 'off' ? [] : notes.map((n, i) => ({
+      n, t: tagText(n), b: i === 0 && notes.length > 1
+    }));
 
     const vs = [...held.values()];
     vbar.style.width = vs.length ? Math.round(Math.max(...vs) / 127 * 100) + '%' : '0%';
 
-    let state;
+    let text;
     if (!ch) {
-      state = {
+      text = {
         chordClass: 'big empty', chordHTML: 'Play something',
         numClass: 'big empty', numHTML: '—',
         romanText: '', metaHTML: '', numEyebrow: eyebrow
@@ -308,12 +347,17 @@
         `<span class="pill">${notes.length} note${notes.length > 1 ? 's' : ''}</span>`
       ];
       if (sustain) chips.push('<span class="pill">sustained</span>');
-      state = {
+      text = {
         chordClass: 'big', chordHTML,
         numClass: 'big', numHTML,
         romanText, metaHTML: chips.join(''), numEyebrow: eyebrow
       };
     }
+
+    const state = Object.assign(
+      { accent, mode, keys, rootPc, tags, cTags, keySize: +ksize.value },
+      text
+    );
 
     chordEl.className = state.chordClass;
     chordEl.innerHTML = state.chordHTML;
@@ -321,8 +365,9 @@
     numEl.innerHTML = state.numHTML;
     romanEl.textContent = state.romanText;
     metaEl.innerHTML = state.metaHTML;
+    paintKeys(state);
 
-    if (BRIDGE) BRIDGE.publish(Object.assign({ accent, mode }, state));
+    if (BRIDGE) BRIDGE.publish(state);
   }
 
   function applyTheme(persist = true) {
@@ -451,15 +496,35 @@
     noPorts();
   }
 
-  /* ================= window chrome ================= */
+  /* ================= window chrome and pop-outs ================= */
+  const CARD_OF = { chord: 'chordcard', number: 'numcard', keys: 'keycard' };
+
+  function markPop(btn, open) {
+    btn.textContent = open ? '⇲' : '⇱';
+    btn.title = open ? 'Dock it back' : 'Pop it out';
+    btn.classList.toggle('on', open);
+    if (!BRIDGE) return;                       // browser preview floats the card instead
+    const which = btn.dataset.pop;
+    const card = $(CARD_OF[which]);
+    if (card) card.classList.toggle('popped', open);
+    if (which === 'chord') {
+      $('chordeyebrow').textContent = open ? 'Chord · in its own window' : 'Chord';
+    } else if (which === 'number') {
+      numEyebrow.textContent = open
+        ? 'Number · in its own window'
+        : 'Number · key of ' + keysel.value;
+    } else {
+      $('keyeyebrow').textContent = open ? 'Keys · in their own window' : 'Keys · 88 · A0 — C8';
+    }
+  }
+
   if (BRIDGE) {
     document.querySelectorAll('[data-win]').forEach((b) => {
       b.addEventListener('click', () => BRIDGE.windowControl(b.dataset.win));
     });
     document.querySelectorAll('[data-pop]').forEach((b) => {
       b.addEventListener('click', async () => {
-        const open = await BRIDGE.togglePopout(b.dataset.pop);
-        markPop(b, open);
+        markPop(b, await BRIDGE.togglePopout(b.dataset.pop));
       });
     });
     BRIDGE.onPopoutChanged(({ name, open }) => {
@@ -467,10 +532,9 @@
       if (b) markPop(b, open);
     });
   } else {
-    // Browser preview: pop-outs float inside the page instead of becoming windows.
     document.querySelectorAll('[data-pop]').forEach((b) => {
       b.addEventListener('click', () => {
-        const card = $(b.dataset.pop === 'chord' ? 'chordcard' : 'numcard');
+        const card = $(CARD_OF[b.dataset.pop]);
         markPop(b, card.classList.toggle('floating'));
       });
     });
@@ -489,12 +553,6 @@
       c.style.setProperty('--fy', Math.max(8, Math.min(innerHeight - c.offsetHeight - 8, e.clientY - drag.dy)) + 'px');
     });
     document.addEventListener('pointerup', () => { drag = null; });
-  }
-
-  function markPop(btn, open) {
-    btn.textContent = open ? '⇲' : '⇱';
-    btn.title = open ? 'Dock it back' : 'Pop it out';
-    btn.classList.toggle('on', open);
   }
 
   /* ================= settings ================= */
@@ -517,6 +575,7 @@
   ksize.addEventListener('input', (e) => {
     bed.style.setProperty('--kh', e.target.value + 'px');
     store({ keySize: +e.target.value });
+    paint();
   });
   keysel.addEventListener('change', () => { store({ keyCenter: keysel.value }); paint(); });
   spellsel.addEventListener('change', () => { store({ spelling: spellsel.value }); paint(); });
@@ -551,7 +610,7 @@
       [...$('labelseg').children].forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.mode === labelMode)));
     }
     if (settingsCache.popout) {
-      for (const name of ['chord', 'number']) {
+      for (const name of ['chord', 'number', 'keys']) {
         const b = document.querySelector(`[data-pop="${name}"]`);
         if (b && settingsCache.popout[name]) markPop(b, true);
       }

@@ -9,7 +9,14 @@ const PRELOAD = path.join(__dirname, 'preload.js');
 
 /** @type {BrowserWindow|null} */ let mainWin = null;
 /** @type {Record<string, BrowserWindow|null>} */
-const popouts = { chord: null, number: null };
+const popouts = { chord: null, number: null, keys: null };
+
+/* default size and minimum size per pop-out */
+const POPOUT_SPEC = {
+  chord:  { width: 430, height: 210, minWidth: 240, minHeight: 140 },
+  number: { width: 400, height: 210, minWidth: 240, minHeight: 140 },
+  keys:   { width: 1180, height: 300, minWidth: 560, minHeight: 150 }
+};
 
 /* Last published readout, so a pop-out opened mid-song paints immediately. */
 let lastState = null;
@@ -84,22 +91,22 @@ function createMainWindow() {
 
 function createPopout(name) {
   const saved = clampToDisplay(settings.load().bounds[name]);
-  const defaults = name === 'chord' ? { width: 430, height: 210 } : { width: 400, height: 210 };
+  const spec = POPOUT_SPEC[name] || POPOUT_SPEC.chord;
 
   const win = new BrowserWindow({
-    width: saved?.width ?? defaults.width,
-    height: saved?.height ?? defaults.height,
+    width: saved?.width ?? spec.width,
+    height: saved?.height ?? spec.height,
     x: saved?.x,
     y: saved?.y,
-    minWidth: 240,
-    minHeight: 140,
+    minWidth: spec.minWidth,
+    minHeight: spec.minHeight,
     show: false,
     frame: false,
     resizable: true,
     alwaysOnTop: true,
     skipTaskbar: false,
     backgroundColor: '#070D1B',
-    title: name === 'chord' ? 'Chordlight — Chord' : 'Chordlight — Number',
+    title: 'Chordlight — ' + name.charAt(0).toUpperCase() + name.slice(1),
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,

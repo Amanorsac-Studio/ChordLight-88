@@ -38,7 +38,7 @@
 
     <section class="card readout raised" id="chordcard">
       <button class="btn poptab" type="button" data-pop="chord" title="Pop it out">⇱</button>
-      <div class="eyebrow"><span class="led"></span><span>Chord</span></div>
+      <div class="eyebrow"><span class="led"></span><span id="chordeyebrow">Chord</span></div>
       <div class="big" id="chord">—</div>
       <div class="chordmeta" id="meta"></div>
     </section>
@@ -70,13 +70,15 @@
 
   </div>
 
-  <div class="bedwrap well">
+  <section class="card bedwrap well" id="keycard">
+    <button class="btn poptab" type="button" data-pop="keys" title="Pop it out">⇱</button>
+    <div class="eyebrow keyeyebrow"><span class="led"></span><span id="keyeyebrow">Keys · 88 · A0 — C8</span></div>
     <div class="stage">
       <div class="namerow" id="namerow"></div>
       <div class="felt"></div>
       <div class="keybed" id="bed"></div>
     </div>
-  </div>
+  </section>
 
   <div class="status raised" id="setup" hidden>
     <div class="grp">

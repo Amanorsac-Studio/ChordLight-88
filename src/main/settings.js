@@ -20,8 +20,8 @@ const DEFAULTS = {
   keySize: 188,
   midiPort: 'All inputs',
   midiChannel: 'Omni',
-  bounds: { main: null, chord: null, number: null },
-  popout: { chord: false, number: false }
+  bounds: { main: null, chord: null, number: null, keys: null },
+  popout: { chord: false, number: false, keys: false }
 };
 
 let cache = null;

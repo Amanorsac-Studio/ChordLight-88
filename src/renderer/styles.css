@@ -72,7 +72,12 @@ button.icon{padding:7px 9px;line-height:1}
 /* ---------- readout deck ---------- */
 .deck{display:flex;gap:13px;align-items:stretch;flex-wrap:wrap}
 .card{position:relative;min-width:0}
-.readout{flex:1 1 320px;padding:18px 20px 16px;overflow:hidden}
+.readout{
+  flex:1 1 320px;padding:18px 20px 16px;overflow:hidden;
+  /* fixed geometry: nothing below may shift when the chord changes */
+  min-height:190px;
+  display:flex;flex-direction:column;justify-content:center;
+}
 .readout::before{
   content:"";position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(420px 170px at 18% 55%,color-mix(in srgb,var(--a2) 16%,transparent),transparent 70%);
@@ -97,16 +102,16 @@ body[data-view="full"] .card.floating{
   font-size:clamp(44px,6.6vw,84px);line-height:.9;font-weight:700;
   letter-spacing:-.008em;color:var(--chord);word-break:break-word;
   text-shadow:0 0 46px color-mix(in srgb,var(--a3) 38%,transparent),0 0 14px color-mix(in srgb,var(--a2) 30%,transparent);
-  min-height:.9em;
+  min-height:.92em;white-space:nowrap;overflow:hidden;
 }
 .big .sup{font-size:.48em;vertical-align:.46em;color:var(--acc-txt)}
 .big .slash{color:var(--text-dim);font-weight:600}
-.big.empty{color:var(--text-faint);text-shadow:none;font-family:var(--font-d);font-size:clamp(18px,2.4vw,24px);font-weight:500;letter-spacing:0}
+.big.empty{color:var(--text-faint);text-shadow:none;font-family:var(--font-d);font-size:clamp(18px,2.4vw,24px);font-weight:500;letter-spacing:0;align-content:center}
 .sub{
   position:relative;font-family:var(--font-m);font-size:12.5px;letter-spacing:.1em;
-  color:var(--alt);margin-top:10px;min-height:1em;
+  color:var(--alt);margin-top:10px;min-height:1.1em;white-space:nowrap;overflow:hidden;
 }
-.chordmeta{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
+.chordmeta{position:relative;display:flex;flex-wrap:nowrap;gap:6px;margin-top:12px;align-items:center;min-height:28px;overflow:hidden}
 .pill{
   font-family:var(--font-m);font-size:10.5px;letter-spacing:.04em;padding:5px 9px;border-radius:5px;
   white-space:nowrap;background:var(--ctl-2);
@@ -144,7 +149,12 @@ button.btn.on{
   box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 3px 12px color-mix(in srgb,var(--a2) 45%,transparent);
 }
 /* ---------- keybed ---------- */
-.bedwrap{padding:12px 14px 14px;overflow-x:auto;overflow-y:hidden}
+.bedwrap{padding:10px 14px 14px;overflow-x:auto;overflow-y:hidden;position:relative}
+/* the keybed's own header only shows once it can be popped out */
+.keyeyebrow{margin-bottom:6px;padding-right:40px}
+.card.popped .stage,
+.card.popped .keyeyebrow + .stage{display:none}
+.card.popped .keyeyebrow{margin-bottom:0}
 .stage{min-width:820px}
 .namerow{position:relative;height:46px;margin-bottom:6px}
 .nametag{
@@ -220,6 +230,13 @@ button.btn.on{
 input[type=range]{width:112px;accent-color:var(--a2);background:transparent}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
+/* a readout that is currently a separate window collapses to a strip */
+.card.popped{flex:0 0 auto;min-height:0;padding:12px 14px;opacity:.72}
+.card.popped .big,
+.card.popped .chordmeta,
+.card.popped .sub{display:none}
+.card.popped .eyebrow{margin-bottom:0}
+
 /* ============================================================
    Electron shell — frameless chrome, drag regions, pop-out views
    ============================================================ */
@@ -244,6 +261,23 @@ body.mac .wbtn{display:none}
 
 /* ---------- pop-out windows ----------
    One card fills the window; everything else is hidden. */
+/* ---------- keys pop-out ---------- */
+body[data-view="keys"] .titlebar,
+body[data-view="keys"] .deck,
+body[data-view="keys"] .status{display:none}
+body[data-view="keys"] .app{padding:0;gap:0;height:100%;max-width:none}
+body[data-view="keys"] .bedwrap{
+  height:100%;border-radius:0;border:0;padding:8px 10px 10px;
+  display:flex;flex-direction:column;
+  -webkit-app-region:drag;
+}
+body[data-view="keys"] .bedwrap button{-webkit-app-region:no-drag}
+body[data-view="keys"] .keyeyebrow{display:none}
+body[data-view="keys"] .stage{
+  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;
+}
+body[data-view="keys"] .keybed{flex:1 1 auto;height:auto;min-height:70px}
+
 body[data-view="chord"] .titlebar,
 body[data-view="chord"] #numcard,
 body[data-view="chord"] .ctrlcard,
