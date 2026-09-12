@@ -11,7 +11,6 @@ files:
   - package.json
   - '!**/*.map'
 
-# ---------------------------------------------------------------- Windows
 win:
   target:
     - target: nsis
@@ -20,8 +19,6 @@ win:
       arch: [x64]
   icon: build/icon.png
   artifactName: Chordlight-88-${version}-win-${arch}.${ext}
-  # Signing: set WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD in CI.
-  # Without them the build is unsigned and SmartScreen will warn on first run.
   signAndEditExecutable: true
 
 nsis:
@@ -32,16 +29,12 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Chordlight 88
-  installerIcon: build/icon.png
-  uninstallerIcon: build/icon.png
-  installerHeaderIcon: build/icon.png
   deleteAppDataOnUninstall: false
   artifactName: Chordlight-88-${version}-Setup.${ext}
 
 portable:
   artifactName: Chordlight-88-${version}-portable.${ext}
 
-# ---------------------------------------------------------------- macOS
 mac:
   target:
     - target: dmg
@@ -63,16 +56,7 @@ mac:
 dmg:
   title: Chordlight 88 ${version}
   artifactName: Chordlight-88-${version}.${ext}
-  contents:
-    - x: 140
-      y: 200
-      type: file
-    - x: 400
-      y: 200
-      type: link
-      path: /Applications
 
-# ---------------------------------------------------------------- Linux (dev only)
 linux:
   target: [AppImage]
   icon: build/icon.png
