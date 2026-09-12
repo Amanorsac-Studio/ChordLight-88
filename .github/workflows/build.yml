@@ -157,25 +157,41 @@ jobs:
         run: npm run ${{ matrix.script }}
 
       # ------------------------------------------------------- verify macOS
-      # electron-builder fails the build on a bad notarisation, but the
-      # standard's §4 checks are cheap and catch the silent cases.
+      # electron-builder signs the .app, notarises it, staples the ticket to
+      # IT, and only then packages the dmg and zip around it. So the .app is
+      # what carries the ticket — `stapler validate` on the dmg reports no
+      # ticket even on a perfectly good build, which is why it is a note here
+      # and not a gate.
       - name: Verify signature, hardened runtime and staple
         if: runner.os == 'macOS'
         run: |
-          APP=$(find dist -maxdepth 2 -name '*.app' -print -quit)
+          APP="$(find dist -maxdepth 2 -name '*.app' -print -quit)"
+          [ -n "$APP" ] || { echo "::error::No .app in dist — nothing to verify."; exit 1; }
           echo "Checking $APP"
+
           codesign --verify --deep --strict --verbose=2 "$APP"
+
           codesign --display --verbose=2 "$APP" 2>&1 | grep -q 'flags=.*runtime' \
-            || { echo '::error::hardened runtime missing'; exit 1; }
+            || { echo '::error::Hardened runtime missing — Apple will not notarise this.'; exit 1; }
           codesign --display --verbose=4 "$APP" 2>&1 | grep -q '^Timestamp=' \
-            || { echo '::error::secure timestamp missing'; exit 1; }
-          if codesign --display --entitlements - --xml "$APP" | grep -q 'get-task-allow'; then
-            echo '::error::get-task-allow present — Apple will reject this'; exit 1
+            || { echo '::error::No secure timestamp on the signature.'; exit 1; }
+          if codesign --display --entitlements - --xml "$APP" 2>/dev/null | grep -q 'get-task-allow'; then
+            echo '::error::get-task-allow is present — Apple rejects that.'; exit 1
           fi
-          DMG=$(find dist -maxdepth 1 -name '*.dmg' -print -quit)
-          xcrun stapler validate "$DMG"
-          spctl --assess -vv --type open --context context:primary-signature "$DMG"
-          echo "Signed, notarised, stapled, and Gatekeeper-approved."
+
+          xcrun stapler validate "$APP" \
+            || { echo '::error::The app has no notarisation ticket stapled.'; exit 1; }
+          spctl --assess --type execute -vv "$APP" \
+            || { echo '::error::Gatekeeper refuses the app.'; exit 1; }
+
+          for DISK in dist/*.dmg; do
+            [ -e "$DISK" ] || continue
+            xcrun stapler validate "$DISK" > /dev/null 2>&1 \
+              && echo "Disk image is stapled too: $DISK" \
+              || echo "Note: $DISK carries no ticket of its own — the app inside it does, which is what Gatekeeper checks."
+          done
+
+          echo "Signed, notarised, stapled and Gatekeeper-approved."
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
