@@ -2,6 +2,21 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.0.1 — September 2026
+
+- **The sustain pedal no longer jumbles the chords.** Play a new chord with the
+  pedal down and the readout names that chord, not everything still sounding.
+  What the pedal is holding stays lit — flat and dimmer, with a bar across the
+  top of the key — so you can see it ring without it crowding the name. A rolled
+  voicing still counts as one chord, and a note you are still holding is never
+  pushed aside. The chord card counts what is ringing.
+- **Setup gains a Pedal choice** — *Current chord*, or *Everything sounding* if
+  you prefer the old behaviour. It is remembered between sessions.
+- **The pop-out chord and number windows now fill the window you give them.**
+  They were stuck at their smallest size unless the window was made very tall.
+- On macOS the licence, changelog and third-party notices now travel inside the
+  application bundle, where macOS expects them.
+
 ## 1.0.0 — September 2026
 
 First release.
@@ -27,7 +42,8 @@ First release.
 
 Known limits in this release:
 
-- The installers are not yet code-signed, so Windows SmartScreen and macOS Gatekeeper
-  warn on first run.
+- The Windows installer is not yet code-signed, so SmartScreen warns on first run.
+  (From 1.0.1 the macOS build is signed with a Developer ID certificate and
+  notarised by Apple, so Gatekeeper opens it without a warning.)
 - A controller whose manufacturer ships an exclusive-access driver may not be shared
   with a DAW. Route it through loopMIDI in that case.

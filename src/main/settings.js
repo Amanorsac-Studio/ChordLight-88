@@ -28,7 +28,8 @@ const PREF_DEFAULTS = {
   labelMode: 'notes',
   keySize: 188,
   midiPort: 'All inputs',
-  midiChannel: 'Omni'
+  midiChannel: 'Omni',
+  pedalMode: 'chord'
 };
 
 /* where the windows were */

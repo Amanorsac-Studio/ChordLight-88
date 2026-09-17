@@ -118,6 +118,7 @@ body[data-view="full"] .card.floating{
   white-space:nowrap;background:var(--ctl-2);
   border:1px solid var(--edge);color:var(--text-dim);box-shadow:inset 0 1px 0 var(--sheen);
 }
+.pill.ringing{color:var(--alt);border-color:color-mix(in srgb,var(--alt) 40%,var(--edge))}
 .pill.note{color:var(--acc-txt);border-color:color-mix(in srgb,var(--acc-txt) 36%,var(--edge))}
 .ctrlcard{
   flex:0 0 auto;padding:14px 16px;
@@ -201,6 +202,30 @@ button.btn.on{
   color:#03121E;
   box-shadow:0 0 26px var(--vglow),0 0 56px var(--vglow2);
 }
+/* Ringing: the pedal is still holding it, but it is not part of the chord.
+   Far enough back that a struck key reads instantly, close enough that you
+   can still see what the pedal is carrying. No glow, no name tag, and a thin
+   bar at the top so the note is legible even on a pale key. */
+.wk.ring,.bk.ring{
+  background:linear-gradient(180deg,
+    color-mix(in srgb,var(--vlo) 50%,var(--key-w1)) 0%,
+    color-mix(in srgb,var(--vmid) 46%,var(--key-w2)) 53%,
+    color-mix(in srgb,var(--vhi) 42%,var(--key-w3)) 100%);
+  box-shadow:none;
+  transition:background 260ms ease-out;
+}
+.bk.ring{
+  background:linear-gradient(180deg,
+    color-mix(in srgb,var(--vlo) 62%,var(--key-b1)) 0%,
+    color-mix(in srgb,var(--vmid) 58%,var(--key-b2)) 60%,
+    color-mix(in srgb,var(--vhi) 52%,var(--key-b3)) 100%);
+  box-shadow:0 3px 6px var(--shadow);
+}
+.wk.ring::before,.bk.ring::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:5px;border-radius:2px;
+  background:var(--vmid);opacity:.9;pointer-events:none;
+}
+.wk.ring .lbl,.bk.ring .lbl{opacity:.55}
 .lbl{pointer-events:none;opacity:.5;font-weight:500}
 .wk.on .lbl,.bk.on .lbl{opacity:1;font-weight:600}
 .dot{

@@ -26,10 +26,17 @@
         numEl = $('num'), romanEl = $('roman'), numEyebrow = $('numeyebrow'),
         keysel = $('keysel'), spellsel = $('spell'), chsel = $('ch'), vbar = $('vbar'),
         sustBadge = $('sustbadge'), portSel = $('port'), portBadge = $('portbadge'),
-        tbPort = $('tbport'), ksize = $('ksize');
+        tbPort = $('tbport'), ksize = $('ksize'), pedalSel = $('pedal');
 
-  const held = new Map(), sustained = new Set(), keyEls = new Map(), centerPct = new Map();
-  let sustain = false, labelMode = 'notes';
+  const held = new Map(), sustained = new Set(), ringing = new Set(),
+        keyEls = new Map(), centerPct = new Map();
+  let sustain = false, labelMode = 'notes', pedalMode = 'chord';
+
+  /* Two notes struck further apart than this are a chord change, not one
+     rolled chord. Under the pedal, everything from before the change stops
+     counting towards the name and is drawn as ringing instead. */
+  const GATHER = 200;
+  let lastOnset = -1e9;
 
   /* ================= theme ================= */
   const ACCENTS = {
@@ -153,17 +160,20 @@
      the main window exactly. */
   function paintKeys(state) {
     const vel = new Map(state.keys || []);
+    const ring = new Map(state.ring || []);
     const rootPc = state.rootPc;
     const multi = (state.keys || []).length > 1;
     const cTags = state.cTags || {};
 
     keyEls.forEach((el, n) => {
       const on = vel.has(n);
+      const rg = !on && ring.has(n);
       el.classList.toggle('on', on);
+      el.classList.toggle('ring', rg);
       el.classList.toggle('root', on && n % 12 === rootPc && multi);
       const lbl = el.lastChild;
-      if (on) {
-        const v = vel.get(n);
+      if (on || rg) {
+        const v = on ? vel.get(n) : ring.get(n);
         const hi = velColor(Math.min(127, v + 26)), mid = velColor(v), lo = velColor(Math.max(14, v - 52));
         el.style.setProperty('--vhi', rgb(hi));
         el.style.setProperty('--vmid', rgb(mid));
@@ -304,10 +314,23 @@
   }
 
   /* ================= render ================= */
+  /* The chord: what the hands are on, plus whatever the pedal is holding
+     from the same chord. Notes demoted by a later chord change are excluded
+     unless the player asked for everything sounding. */
   function sounding() {
     const s = new Set(held.keys());
-    if (sustain) sustained.forEach((n) => s.add(n));
+    if (sustain) {
+      sustained.forEach((n) => {
+        if (pedalMode === 'all' || !ringing.has(n)) s.add(n);
+      });
+    }
     return [...s].sort((a, b) => a - b);
+  }
+
+  /* Still audible, no longer part of the chord. */
+  function ringingNotes() {
+    if (!sustain || pedalMode === 'all') return [];
+    return [...ringing].filter((n) => !held.has(n)).sort((a, b) => a - b);
   }
 
   function paint() {
@@ -318,7 +341,9 @@
     if (!$('numcard').classList.contains('popped')) numEyebrow.textContent = eyebrow;
 
     /* everything the keybed needs, so the keys window mirrors it exactly */
+    const rung = ringingNotes();
     const keys = notes.map((n) => [n, held.has(n) ? held.get(n) : 70]);
+    const ring = rung.map((n) => [n, 70]);
     const cTags = {};
     if (labelMode !== 'off') {
       for (let n = LOW; n <= HIGH; n++) if (n % 12 === 0) cTags[n] = tagText(n);
@@ -361,7 +386,8 @@
         `<span class="pill note">${notes.map(noteName).join('  ·  ')}</span>`,
         `<span class="pill">${notes.length} note${notes.length > 1 ? 's' : ''}</span>`
       ];
-      if (sustain) chips.push('<span class="pill">sustained</span>');
+      if (rung.length) chips.push(`<span class="pill ringing">${rung.length} ringing</span>`);
+      else if (sustain) chips.push('<span class="pill">sustained</span>');
       text = {
         chordClass: 'big', chordHTML,
         numClass: 'big', numHTML,
@@ -370,7 +396,7 @@
     }
 
     const state = Object.assign(
-      { accent, mode, keys, rootPc, tags, cTags, keySize: +ksize.value },
+      { accent, mode, keys, ring, rootPc, tags, cTags, keySize: +ksize.value },
       text
     );
 
@@ -406,13 +432,37 @@
   })();
 
   /* ================= notes ================= */
-  const on = (n, v) => { held.set(n, v); sustained.add(n); paint(); };
-  const off = (n) => { held.delete(n); if (!sustain) sustained.delete(n); paint(); };
+  /* Everything the pedal is still holding, but nobody is playing, stops
+     counting towards the chord. Keys under the fingers are untouched — a
+     left hand holding while the right hand moves is still one chord. */
+  function demote() {
+    sustained.forEach((n) => { if (!held.has(n)) ringing.add(n); });
+  }
+
+  const on = (n, v) => {
+    const now = performance.now();
+    if (now - lastOnset > GATHER) demote();   // a new chord, not a rolled one
+    lastOnset = now;
+    ringing.delete(n);                        // struck again: back in the chord
+    held.set(n, v);
+    sustained.add(n);
+    paint();
+  };
+
+  const off = (n) => {
+    held.delete(n);
+    if (!sustain) { sustained.delete(n); ringing.delete(n); }
+    paint();
+  };
+
   function setSustain(b) {
     sustain = b;
     sustBadge.textContent = b ? 'Sustain held' : 'Sustain off';
     sustBadge.classList.toggle('warn', b);
-    if (!b) sustained.forEach((n) => { if (!held.has(n)) sustained.delete(n); });
+    if (!b) {
+      sustained.forEach((n) => { if (!held.has(n)) sustained.delete(n); });
+      ringing.clear();
+    }
     paint();
   }
 
@@ -500,7 +550,7 @@
             if (cmd === 0x90 && b > 0) on(a, b);
             else if (cmd === 0x80 || (cmd === 0x90 && b === 0)) off(a);
             else if (cmd === 0xB0 && a === 64) setSustain(b >= 64);
-            else if (cmd === 0xB0 && (a === 120 || a === 123)) { held.clear(); sustained.clear(); paint(); }
+            else if (cmd === 0xB0 && (a === 120 || a === 123)) { held.clear(); sustained.clear(); ringing.clear(); paint(); }
           };
         });
       };
@@ -613,6 +663,12 @@
   spellsel.addEventListener('change', () => { store({ spelling: spellsel.value }); paint(); });
   chsel.addEventListener('change', () => store({ midiChannel: chsel.value }));
   portSel.addEventListener('change', () => store({ midiPort: portSel.value }));
+  pedalSel.addEventListener('change', () => {
+    pedalMode = pedalSel.value;
+    if (pedalMode === 'all') ringing.clear();
+    store({ pedalMode });
+    paint();
+  });
   $('labelseg').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     labelMode = b.dataset.mode;
@@ -640,6 +696,10 @@
     if (settingsCache.spelling) spellsel.value = settingsCache.spelling;
     if (settingsCache.midiChannel) chsel.value = settingsCache.midiChannel;
     if (settingsCache.keySize) { ksize.value = settingsCache.keySize; bed.style.setProperty('--kh', settingsCache.keySize + 'px'); }
+    if (settingsCache.pedalMode === 'all' || settingsCache.pedalMode === 'chord') {
+      pedalMode = settingsCache.pedalMode;
+      pedalSel.value = pedalMode;
+    }
     if (settingsCache.labelMode) {
       labelMode = settingsCache.labelMode;
       [...$('labelseg').children].forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.mode === labelMode)));
