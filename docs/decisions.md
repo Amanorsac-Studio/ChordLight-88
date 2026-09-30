@@ -121,3 +121,34 @@ plugins is the full near-black chrome of P18 — the wizard sidebar and header
 carry the brand, the page bodies stay Windows-grey. A fully skinned installer
 means moving to Inno Setup, which the standard names; that is a separate
 build task, not a config change.
+
+## Permissions are named, not inferred (1.2.0)
+
+The 1.1.1 gate said "only an audio input, deny the rest" and took Web MIDI
+with it — a port list that is silently empty, with no error anywhere. The
+gate now holds an explicit set: `midi`, `midiSysex`, `display-capture`,
+`fullscreen`, and `media` for audio only. Anything new the renderer needs
+gets added there deliberately, and the check handler answers the same way
+as the request handler so a permission never passes one and fails the other.
+
+## Advanced is the drawer continued, not a second design
+
+Setup keeps its one row of controls exactly as it was. Advanced is a button
+at its end that opens two labelled rows beneath it — Video and Look — built
+from the same selects, sliders and swatches. Nothing needed to play lives
+there.
+
+## The duck is a gain, not a compressor
+
+Web Audio has no side-chain. The vocal input feeds an analyser polled every
+20 ms; when its level clears −42 dBFS the keyboard-and-system gain moves to
+−N dB with a 20 ms attack and comes back over 250 ms. N is the slider, live.
+The vocal itself is never ducked. The whole mix passes one DelayNode for the
+audio offset.
+
+## The backdrop picture is a file, not a preference
+
+The picture goes to Documents/Amanorsac Studio/Chordlight 88/Backdrop as
+backdrop.<ext> — the preferences file stays small and readable — and comes to
+the renderer as a data URL, so the CSP never has to admit a file: URL.
+Pop-outs fetch it once rather than receiving it with every note.

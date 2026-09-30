@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chordlight 88 - Setup Panel Mockup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+
+        .header p {
+            color: #b0b0b0;
+            font-size: 14px;
+        }
+
+        .setup-panel {
+            background: #0f3460;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .section {
+            border-bottom: 1px solid #1a4d7a;
+            padding: 24px;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #4a9eff;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title::before {
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            background: #4a9eff;
+            border-radius: 50%;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #c0c0c0;
+        }
+
+        .control-hint {
+            font-size: 11px;
+            color: #808080;
+            margin-top: 4px;
+            margin-left: 2px;
+        }
+
+        select, input[type="range"], input[type="number"], input[type="file"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #2a5a8a;
+            border-radius: 6px;
+            background: #0a1f35;
+            color: #e0e0e0;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        select:hover, input[type="range"]:hover, input[type="number"]:hover {
+            border-color: #3a7aaa;
+        }
+
+        select:focus, input[type="range"]:focus, input[type="number"]:focus, input[type="file"]:focus {
+            outline: none;
+            border-color: #4a9eff;
+            box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+        }
+
+        .device-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .device-not-detected {
+            color: #ff6b6b;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .dual-input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .dual-input-group {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .ducking-control {
+            background: #0a2a40;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+
+        .range-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .range-label-text {
+            font-size: 12px;
+            color: #a0a0a0;
+        }
+
+        .range-value {
+            font-size: 12px;
+            color: #4a9eff;
+            font-weight: 600;
+        }
+
+        .backdrop-preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .backdrop-preview {
+            aspect-ratio: 16 / 9;
+            border: 2px solid #2a5a8a;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            position: relative;
+            transition: border-color 0.2s;
+        }
+
+        .backdrop-preview:hover {
+            border-color: #3a7aaa;
+        }
+
+        .backdrop-preview.active {
+            border-color: #4a9eff;
+            box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.3);
+        }
+
+        .backdrop-preview-content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #808080;
+            font-weight: 500;
+            background: linear-gradient(135deg, #0a1f35 0%, #1a3a50 100%);
+        }
+
+        .backdrop-preview-custom {
+            position: relative;
+        }
+
+        .backdrop-preview-custom .backdrop-preview-content {
+            background: linear-gradient(45deg, #2a4a6a 25%, transparent 25%, transparent 75%, #2a4a6a 75%, #2a4a6a),
+                        linear-gradient(45deg, #2a4a6a 25%, transparent 25%, transparent 75%, #2a4a6a 75%, #2a4a6a);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+            background-color: #0a1f35;
+        }
+
+        .custom-image-upload {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .custom-image-upload input[type="file"] {
+            grid-column: 1;
+        }
+
+        .upload-btn {
+            grid-column: 2;
+            padding: 10px 16px;
+            background: #1a4d7a;
+            border: 1px solid #2a5a8a;
+            border-radius: 6px;
+            color: #4a9eff;
+            font-weight: 500;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .upload-btn:hover {
+            background: #1f5a8a;
+            border-color: #3a7aaa;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+        }
+
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #4a9eff;
+        }
+
+        .checkbox-group label {
+            font-size: 13px;
+            color: #c0c0c0;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .info-banner {
+            background: rgba(74, 158, 255, 0.1);
+            border-left: 3px solid #4a9eff;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #b0d4ff;
+            margin-bottom: 16px;
+        }
+
+        .two-column-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .two-column-group {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            padding: 20px 24px;
+            border-top: 1px solid #1a4d7a;
+            background: #0a1f35;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: 1px solid #2a5a8a;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #b0b0b0;
+        }
+
+        .btn-secondary:hover {
+            background: #1a3a50;
+            border-color: #3a7aaa;
+        }
+
+        .btn-primary {
+            background: #1a4d7a;
+            color: #4a9eff;
+            border-color: #2a5a8a;
+        }
+
+        .btn-primary:hover {
+            background: #1f5a8a;
+            border-color: #3a7aaa;
+        }
+
+        .status-message {
+            font-size: 12px;
+            margin-top: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            background: rgba(74, 158, 255, 0.1);
+            color: #b0d4ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎹 Chordlight 88 Setup Panel</h1>
+            <p>Reorganized with logical categories and enhanced audio/backdrop controls</p>
+        </div>
+
+        <div class="setup-panel">
+            <!-- MIDI INPUT SECTION -->
+            <div class="section">
+                <div class="section-title">MIDI Input</div>
+
+                <div class="control-group">
+                    <label class="control-label">MIDI Input Device</label>
+                    <select id="midiin">
+                        <option value="">None selected</option>
+                        <option value="device1" selected>Roland RD-2000 (Port 1)</option>
+                        <option value="device2">Korg Kross (Port 2)</option>
+                        <option value="device3">USB MIDI Controller</option>
+                    </select>
+                    <div style="margin-top: 8px; font-size: 12px; color: #7fb3d5;">
+                        <span class="device-indicator"></span>Connected and responding
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Input Signal Level</label>
+                    <div style="background: #0a2a40; padding: 12px; border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="flex: 1; height: 4px; background: #1a3a50; border-radius: 2px; overflow: hidden;">
+                                <div style="width: 65%; height: 100%; background: linear-gradient(90deg, #4ade80 0%, #4ade80 60%, #fbbf24 60%, #fbbf24 100%);"></div>
+                            </div>
+                            <span style="font-size: 12px; color: #a0a0a0; min-width: 35px;">65%</span>
+                        </div>
+                    </div>
+                    <div class="control-hint">Shows real-time MIDI activity</div>
+                </div>
+            </div>
+
+            <!-- MIDI OUTPUT SECTION -->
+            <div class="section">
+                <div class="section-title">MIDI Output</div>
+
+                <div class="control-group">
+                    <label class="control-label">MIDI Output Device</label>
+                    <select id="midiout">
+                        <option value="">None (playback disabled)</option>
+                        <option value="device1" selected>Roland RD-2000 (Port 1)</option>
+                        <option value="device2">Korg Kross (Port 2)</option>
+                        <option value="device3">Software Synth</option>
+                    </select>
+                    <div style="margin-top: 8px; font-size: 12px; color: #7fb3d5;">
+                        <span class="device-indicator"></span>Connected and ready
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enableOutput" checked>
+                        <label for="enableOutput">Enable MIDI output during playback</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AUDIO CAPTURE SECTION -->
+            <div class="section">
+                <div class="section-title">Audio Capture</div>
+
+                <div class="info-banner">
+                    💡 Configure two audio inputs: keyboard + vocals. Voice will automatically darken the keyboard when detected.
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Keyboard Input</label>
+                    <select>
+                        <option value="">None (keyboard audio off)</option>
+                        <option value="system" selected>System Audio</option>
+                        <option value="line1">Line In (Focusrite 2i2 - Input 1)</option>
+                        <option value="line2">Line In (Focusrite 2i2 - Input 2)</option>
+                    </select>
+                    <div class="control-hint">Capture audio directly from your keyboard or synthesizer</div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Vocals Input</label>
+                    <select>
+                        <option value="">None (vocals off)</option>
+                        <option value="mic1">USB Microphone</option>
+                        <option value="mic2" selected>Condenser Mic (Focusrite 2i2 - Input 2)</option>
+                        <option value="line2">Line In (Focusrite 2i2 - Input 2)</option>
+                    </select>
+                    <div class="control-hint">Capture vocals or other audio input</div>
+                </div>
+
+                <div class="ducking-control">
+                    <div class="range-label">
+                        <span class="range-label-text">Voice Ducking Intensity</span>
+                        <span class="range-value">45%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value="45">
+                    <div class="control-hint" style="margin-top: 8px;">
+                        How much keyboard audio darkens when voice is detected (0% = none, 100% = full)
+                    </div>
+                </div>
+            </div>
+
+            <!-- AUDIO SETTINGS SECTION -->
+            <div class="section">
+                <div class="section-title">Audio Settings</div>
+
+                <div class="two-column-group">
+                    <div class="control-group">
+                        <label class="control-label">Audio Output Device</label>
+                        <select>
+                            <option value="default" selected>System Default (Speakers)</option>
+                            <option value="headphones">Headphones (USB Audio)</option>
+                            <option value="interface">Focusrite 2i2</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label class="control-label">Latency Compensation</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="number" value="0" min="0" max="500" placeholder="0 ms" style="flex: 1;">
+                            <span style="display: flex; align-items: center; color: #a0a0a0; font-size: 12px;">ms</span>
+                        </div>
+                        <div class="control-hint">Adjust for sync between video and audio</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Video Recording Quality</label>
+                    <select>
+                        <option value="1080p60">1080p 60fps (Recommended)</option>
+                        <option value="1440p60">1440p 60fps</option>
+                        <option value="4k30">4K 30fps</option>
+                        <option value="720p60">720p 60fps (Lower file size)</option>
+                    </select>
+                    <div class="control-hint">Higher quality = larger file sizes. Audio is always 48kHz</div>
+                </div>
+            </div>
+
+            <!-- KEY DISPLAY SECTION -->
+            <div class="section">
+                <div class="section-title">Key Display</div>
+
+                <div class="two-column-group">
+                    <div class="control-group">
+                        <label class="control-label">Key Label Mode</label>
+                        <select>
+                            <option value="notes" selected>Notes</option>
+                            <option value="chords">Nashville Numbers</option>
+                            <option value="both">Both (Notes + Numbers)</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label class="control-label">Velocity Display</label>
+                        <select>
+                            <option value="fixed" selected>Fixed</option>
+                            <option value="dynamic">Dynamic (Follow playing)</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Key Highlight Brightness</label>
+                    <div class="range-label">
+                        <span class="range-label-text"></span>
+                        <span class="range-value">70%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value="70">
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Pedal Mode</label>
+                    <select>
+                        <option value="chord">Current Chord Only</option>
+                        <option value="sounding" selected>Everything Sounding</option>
+                        <option value="ignore">Ignore the Pedal</option>
+                    </select>
+                    <div class="control-hint">How sustain pedal affects note display</div>
+                </div>
+            </div>
+
+            <!-- APPEARANCE SECTION -->
+            <div class="section">
+                <div class="section-title">Appearance</div>
+
+                <div class="control-group">
+                    <label class="control-label">Backdrop</label>
+                    <div class="backdrop-preview-container">
+                        <div class="backdrop-preview active">
+                            <div class="backdrop-preview-content">Theme (Default)</div>
+                        </div>
+                        <div class="backdrop-preview">
+                            <div class="backdrop-preview-content">
+                                <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #2a6a4a 0%, #1a4a3a 100%);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Custom Backdrop Image</label>
+                    <div class="custom-image-upload">
+                        <input type="file" id="backdropImage" accept="image/*" placeholder="Select image...">
+                        <button class="upload-btn">Upload</button>
+                    </div>
+                    <div class="control-hint">PNG, JPG supported (recommended: 1920x1080 or larger)</div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Image Tint Overlay</label>
+                    <div class="range-label">
+                        <span class="range-label-text"></span>
+                        <span class="range-value">30%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value="30">
+                    <div class="control-hint">Darkens custom backdrop image to improve text readability (0% = no tint, 100% = full dark overlay)</div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Backdrop Blur</label>
+                    <div class="range-label">
+                        <span class="range-label-text"></span>
+                        <span class="range-value">5px</span>
+                    </div>
+                    <input type="range" min="0" max="20" value="5">
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Theme Color</label>
+                    <select>
+                        <option value="blue" selected>Deep Blue</option>
+                        <option value="dark">Dark</option>
+                        <option value="modern">Modern (Light)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- RECORDING SECTION -->
+            <div class="section">
+                <div class="section-title">Recording</div>
+
+                <div class="control-group">
+                    <label class="control-label">Recordings Library</label>
+                    <select id="reclist">
+                        <option value="">Select a recording...</option>
+                        <option value="rec1">Recording 1 - Sept 25, 2026</option>
+                        <option value="rec2">Recording 2 - Sept 24, 2026</option>
+                        <option value="rec3">Recording 3 - Sept 22, 2026</option>
+                    </select>
+                    <div class="control-hint">Load and playback previous MIDI recordings</div>
+                </div>
+
+                <div class="control-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="autoLoop" checked>
+                        <label for="autoLoop">Loop playback when finished</label>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Playback Speed</label>
+                    <div class="range-label">
+                        <span class="range-label-text"></span>
+                        <span class="range-value">1.0x</span>
+                    </div>
+                    <input type="range" min="0.5" max="2" step="0.1" value="1">
+                </div>
+            </div>
+
+            <!-- ACTION BUTTONS -->
+            <div class="button-group">
+                <button class="btn btn-secondary">Cancel</button>
+                <button class="btn btn-primary">Save Settings</button>
+            </div>
+        </div>
+
+        <div style="margin-top: 40px; padding: 20px; background: rgba(74, 158, 255, 0.1); border-left: 3px solid #4a9eff; border-radius: 6px; color: #b0d4ff; font-size: 13px;">
+            <strong>✓ Design highlights:</strong>
+            <ul style="margin-top: 10px; margin-left: 20px; line-height: 1.6;">
+                <li><strong>Logical Organization:</strong> MIDI, Audio, Display, Appearance, Recording sections</li>
+                <li><strong>Dual Audio Inputs:</strong> Separate keyboard and vocals with ducking control</li>
+                <li><strong>Custom Backdrops:</strong> Import images with tint overlay adjustment</li>
+                <li><strong>Clear Visibility:</strong> MIDI input/output both prominent with status indicators</li>
+                <li><strong>Audio Settings:</strong> Output device, latency, and recording quality in one place</li>
+                <li><strong>Signal Monitoring:</strong> Real-time MIDI level display and device status</li>
+                <li><strong>Clean UI:</strong> Dark theme with organized sections and helpful hints</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

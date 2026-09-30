@@ -30,6 +30,10 @@ contextBridge.exposeInMainWorld('chordlight', {
   listRecordings: () => ipcRenderer.invoke('rec:list'),
   readRecording: (name) => ipcRenderer.invoke('rec:read', name),
 
+  /* the backdrop picture, kept in Documents/Amanorsac Studio/Chordlight 88/Backdrop */
+  setBackdrop: (bytes, ext) => ipcRenderer.invoke('backdrop:set', { bytes, ext }),
+  getBackdrop: () => ipcRenderer.invoke('backdrop:get'),
+
   openExternal: (url) => ipcRenderer.send('open:external', url),
 
   appInfo: () => ipcRenderer.invoke('app:info')

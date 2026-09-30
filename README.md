@@ -28,7 +28,9 @@ Amanorsac Studio · Windows and macOS · Electron.
 - **Recording** — MIDI takes and a five-minute "Keep" buffer to `.mid`; video of
   the window to WebM (system audio on Windows).
 - **Stage** full-screen mode, solid/gradient key light, fixed/sensitive velocity,
-  chroma backdrop for keying.
+  your own picture as the backdrop with a tint over it.
+- **Video with sound** — system sound, a keyboard input, a vocal input, or all three
+  mixed; the keys duck under your voice by as many dB as you choose.
 - **Shared MIDI** — ports are never opened exclusively, so a DAW or Kontakt can hold
   the same controller at the same time. Virtual cables (loopMIDI, LoopBe, IAC) appear
   like any hardware port, and hot-plugged devices show up without a restart.

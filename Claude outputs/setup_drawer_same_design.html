@@ -1,4 +1,5 @@
-:root{
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Chordlight 88 — Setup drawer, same design</title>
+<style>:root{
   /* rewritten at runtime by the theme engine */
   --void:#050912; --bg-1:#070D1B; --bg-2:#0A1226;
   --panel:#0D1730; --panel-hi:#142141; --well:#060B16;
@@ -272,17 +273,6 @@ button.btn.on{
 .vmeter{width:96px;height:8px;border-radius:4px;background:var(--void);border:1px solid var(--edge);box-shadow:inset 0 2px 5px var(--inset);overflow:hidden}
 .vmeter i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--a1),var(--a2) 55%,var(--a3) 82%,var(--a4));transition:width 70ms linear}
 input[type=range]{width:112px;accent-color:var(--a2);background:transparent}
-/* Advanced — the drawer continued, in labelled rows. Same controls, same
-   style; only the row tag is new. */
-.status.advanced{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;padding:2px 14px}
-.status.advanced .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:9px 0}
-.status.advanced .row + .row{border-top:1px solid var(--edge)}
-.status.advanced .tag{
-  font-family:var(--font-m);font-size:9px;letter-spacing:.2em;text-transform:uppercase;
-  color:var(--acc-txt);width:52px;flex:none;padding-bottom:10px;
-}
-.status.advanced .tag .led{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--a3);box-shadow:0 0 9px var(--a3);margin-right:7px;vertical-align:1px}
-label.fld .rv{font-size:10px;letter-spacing:.02em;text-transform:none;color:var(--text-dim);margin-left:6px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
 /* a readout that is currently a separate window collapses to a strip */
@@ -513,26 +503,122 @@ body.onstage .wk{border-radius:0}
 body.onstage.hint .stageexit{opacity:1}
 
 /* ============================================================
-   Backdrop — the player's own picture behind everything but the keys
-   The picture sits on the body, a tint of chosen colour and strength over
-   it, and the panels go to glass so it shows through.
+   Backdrop — a keyable flat colour behind everything but the keys
    ============================================================ */
-body[data-backdrop="picture"]{
-  background:var(--pic) center/cover no-repeat fixed;
+body[data-backdrop="green"]{--chroma:#00B140}
+body[data-backdrop="blue"]{--chroma:#0047BB}
+body[data-backdrop="green"],body[data-backdrop="blue"]{
+  background:var(--chroma);
 }
-body[data-backdrop="picture"]::before{
-  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background:var(--tint,#000);opacity:var(--tint-a,.4);
+body[data-backdrop="green"] .app,body[data-backdrop="blue"] .app,
+body[data-backdrop="green"] .titlebar,body[data-backdrop="blue"] .titlebar,
+body[data-backdrop="green"] .card,body[data-backdrop="blue"] .card,
+body[data-backdrop="green"] .bedwrap,body[data-backdrop="blue"] .bedwrap,
+body[data-backdrop="green"] .status,body[data-backdrop="blue"] .status,
+body[data-backdrop="green"] .transport,body[data-backdrop="blue"] .transport{
+  background:var(--chroma);border-color:transparent;box-shadow:none;
+  background-image:none;
 }
-body[data-backdrop="picture"] .app{position:relative;z-index:0}
-body[data-backdrop="picture"] .raised,
-body[data-backdrop="picture"] .transport{
-  background:color-mix(in srgb,var(--panel) 64%,transparent);
-  backdrop-filter:blur(16px) saturate(1.2);
+body[data-backdrop="green"] .readout::before,body[data-backdrop="blue"] .readout::before{display:none}
+/* glows would bleed into the key colour and fringe when keyed out */
+body[data-backdrop="green"] .wk.on,body[data-backdrop="blue"] .wk.on,
+body[data-backdrop="green"] .bk.on,body[data-backdrop="blue"] .bk.on,
+body[data-backdrop="green"] .nametag,body[data-backdrop="blue"] .nametag,
+body[data-backdrop="green"] .big,body[data-backdrop="blue"] .big,
+body[data-backdrop="green"] .eyebrow .led,body[data-backdrop="blue"] .eyebrow .led{
+  box-shadow:none;text-shadow:none;
 }
-body[data-backdrop="picture"] .readout::before{opacity:.5}
-body[data-backdrop="picture"] .well{
-  background:color-mix(in srgb,var(--well) 78%,transparent);
-  backdrop-filter:blur(16px);
+
+/* ---- mockup page only ---- */
+body{padding:24px 0 60px}
+.demo{margin:0 16px 8px;font-family:var(--font-m);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-faint)}
+.demo b{color:var(--acc-txt);font-weight:600}
+.gap{height:34px}
+/* ---- the ONE css addition proposed for the app: labelled rows in the drawer ---- */
+.status.rows{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;padding:2px 14px}
+.status .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:9px 0}
+.status .row + .row{border-top:1px solid var(--edge)}
+.status .row > .tag{
+  font-family:var(--font-m);font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--acc-txt);width:52px;flex:none;padding-bottom:10px;
 }
-body[data-backdrop="picture"].onstage .deck{background:none}
+.status .row > .tag .led{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--a3);box-shadow:0 0 9px var(--a3);margin-right:7px;vertical-align:1px}
+.rv{font-family:var(--font-m);font-size:10px;color:var(--text-dim);margin-left:6px}
+.rowgap{flex:1 1 16px}
+</style></head><body>
+
+<div class="app" style="min-height:0;gap:13px">
+
+  <div class="titlebar raised">
+    <div class="logo"><div class="bars" aria-hidden="true"><i style="height:7px"></i><i style="height:13px"></i><i style="height:19px"></i><i style="height:11px"></i><i style="height:16px"></i><i style="height:6px"></i></div>
+      <div class="wordmark"><b>Chordlight 88</b><span>Amanorsac Studio</span></div></div>
+    <div class="seg"><button type="button" aria-pressed="true">Notes</button><button type="button">Sol-fa</button><button type="button">Off</button></div>
+    <div class="tbstat"><span class="led"></span><span>Roland RD-2000</span></div>
+    <div class="recgroup push"><button class="btn">● Rec</button><button class="btn">Keep</button><button class="btn">◉ Video</button></div>
+    <button class="btn icon">⛶</button><button class="btn icon">☾</button>
+    <button class="btn on">⚙ Setup</button><button class="btn">About</button>
+    <div class="wbtn"><button>—</button><button>▢</button><button class="close">✕</button></div>
+  </div>
+
+  <div class="demo">Now — one long line, no order</div>
+  <div class="status raised">
+    <div class="grp"><label class="fld">MIDI input</label><select><option>Roland RD-2000</option></select></div>
+    <div class="grp"><label class="fld">Channel</label><select><option>Omni</option></select></div>
+    <div class="grp"><label class="fld">MIDI output</label><select><option>None</option></select></div>
+    <div class="grp"><label class="fld">Key light</label><select><option>Solid</option></select></div>
+    <div class="grp"><label class="fld">Video sound</label><select><option>None</option></select></div>
+    <div class="grp"><label class="fld">Audio input</label><select><option>Default</option></select></div>
+    <div class="grp"><label class="fld">Backdrop</label><select><option>Theme</option></select></div>
+    <div class="grp"><label class="fld">Pedal</label><select><option>Current chord</option></select></div>
+    <div class="grp"><label class="fld">Colour</label><div class="swatches"><button style="background:#2E7EFF" aria-pressed="true"></button><button style="background:#B9AEFF"></button><button style="background:#4ECDE6"></button><button style="background:#FF7A59"></button><button style="background:#7CE07C"></button></div></div>
+    <div class="grp"><label class="fld">Velocity</label><select><option>Sensitive</option></select></div>
+    <div class="grp"><label class="fld">Level</label><div class="vmeter"><i style="width:62%"></i></div></div>
+    <div class="grp"><label class="fld">Key size</label><input type="range" min="140" max="280" value="188"></div>
+    <div class="spacer"></div>
+    <span class="badge">Non-exclusive</span><span class="badge">Sustain off</span>
+  </div>
+
+  <div class="gap"></div>
+  <div class="demo">Proposed — <b>same panel, same controls, same style</b> · just sorted into four labelled rows, plus the new bits in the same style</div>
+  <div class="status raised rows">
+
+    <div class="row">
+      <div class="tag"><span class="led"></span>MIDI</div>
+      <div class="grp"><label class="fld">MIDI input</label><select><option>Roland RD-2000</option><option>Korg Kross</option></select></div>
+      <div class="grp"><label class="fld">Channel</label><select><option>Omni</option></select></div>
+      <div class="grp"><label class="fld">MIDI output</label><select><option>None</option><option>Roland RD-2000</option><option>Microsoft GS Wavetable Synth</option></select></div>
+      <div class="grp"><label class="fld">Pedal</label><select><option>Current chord</option><option>Everything sounding</option><option>Ignore the pedal</option></select></div>
+      <div class="rowgap"></div>
+      <span class="badge">Non-exclusive</span><span class="badge">Sustain off</span>
+      <button class="btn">Recordings folder</button>
+    </div>
+
+    <div class="row">
+      <div class="tag"><span class="led"></span>Keys</div>
+      <div class="grp"><label class="fld">Key light</label><select><option>Solid</option><option>Gradient</option></select></div>
+      <div class="grp"><label class="fld">Colour</label><div class="swatches"><button style="background:#2E7EFF" aria-pressed="true"></button><button style="background:#B9AEFF"></button><button style="background:#4ECDE6"></button><button style="background:#FF7A59"></button><button style="background:#7CE07C"></button></div></div>
+      <div class="grp"><label class="fld">Velocity</label><select><option>Sensitive</option><option>Fixed</option></select></div>
+      <div class="grp"><label class="fld">Level</label><div class="vmeter"><i style="width:62%"></i></div></div>
+      <div class="grp"><label class="fld">Key size</label><input type="range" min="140" max="280" value="188"></div>
+    </div>
+
+    <div class="row">
+      <div class="tag"><span class="led"></span>Video</div>
+      <div class="grp"><label class="fld">Video sound</label><select><option>System + inputs</option><option>None</option><option>System — what is playing</option><option>Inputs only</option></select></div>
+      <div class="grp"><label class="fld">Keyboard input</label><select><option>Focusrite 2i2 · In 1</option><option>Default</option></select></div>
+      <div class="grp"><label class="fld">Vocal input</label><select><option>Focusrite 2i2 · In 2</option><option>None</option></select></div>
+      <div class="grp"><label class="fld">Duck keys when you talk <span class="rv">−9 dB</span></label><input type="range" min="0" max="24" value="9"></div>
+      <div class="grp"><label class="fld">Quality</label><select><option>Best — 1080p 60</option><option>Good — 1080p 30</option><option>Small — 720p</option></select></div>
+    </div>
+
+    <div class="row">
+      <div class="tag"><span class="led"></span>Look</div>
+      <div class="grp"><label class="fld">Backdrop</label><select><option>Theme</option><option>Your picture</option></select></div>
+      <div class="grp"><label class="fld">Picture</label><button class="btn">Choose picture…</button></div>
+      <div class="grp"><label class="fld">Tint over picture <span class="rv">40%</span></label><input type="range" min="0" max="100" value="40"></div>
+      <div class="grp"><label class="fld">Tint colour</label><div class="swatches"><button style="background:#050912" aria-pressed="true"></button><button style="background:#12306B"></button><button style="background:#3A1250"></button><button style="background:#1A3A2A"></button></div></div>
+    </div>
+
+  </div>
+</div>
+</body></html>

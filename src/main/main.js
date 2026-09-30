@@ -242,17 +242,62 @@ ipcMain.on('rec:open-folder', () => {
   shell.openPath(settings.REC_DIR);
 });
 
+/* ------------------------------------------------------------------ *
+ * Backdrop picture — the player's own image behind the app
+ *
+ * Kept beside the preferences as Backdrop/backdrop.<ext>; the renderer gets
+ * it back as a data URL, so no file: URL ever has to pass the CSP.
+ * ------------------------------------------------------------------ */
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
+const dataUrl = (file) => {
+  const ext = path.extname(file).slice(1).toLowerCase();
+  const buf = fs.readFileSync(file);
+  return `data:${MIME[ext] || 'image/png'};base64,${buf.toString('base64')}`;
+};
+ipcMain.handle('backdrop:set', async (_e, { bytes, ext }) => {
+  const e = String(ext || 'png').toLowerCase().replace(/[^a-z]/g, '');
+  if (!MIME[e]) throw new Error('Use a PNG, JPG, WebP or GIF');
+  if (bytes.byteLength > 24 * 1024 * 1024) throw new Error('That picture is over 24 MB');
+  await fs.promises.mkdir(settings.BACKDROP_DIR, { recursive: true });
+  for (const old of Object.keys(MIME)) {                       // one picture at a time
+    try { await fs.promises.unlink(path.join(settings.BACKDROP_DIR, 'backdrop.' + old)); } catch { /* none */ }
+  }
+  const file = path.join(settings.BACKDROP_DIR, 'backdrop.' + e);
+  await fs.promises.writeFile(file, Buffer.from(bytes));
+  return dataUrl(file);
+});
+ipcMain.handle('backdrop:get', async () => {
+  for (const ext of Object.keys(MIME)) {
+    const file = path.join(settings.BACKDROP_DIR, 'backdrop.' + ext);
+    if (fs.existsSync(file)) { try { return dataUrl(file); } catch { return null; } }
+  }
+  return null;
+});
+
 /* When the renderer asks for a display stream it gets this window and
    nothing else — no picker, no other windows or screens. On Windows the
    system audio comes along, so a clip carries what Kontakt was playing. */
 function allowSelfCapture() {
-  // The only permission the renderer ever asks for is an audio input, for
-  // the sound in a video clip. Everything else stays denied.
+  /* What the renderer may ask for, and nothing else:
+       midi / midiSysex   — the keyboard. Web MIDI is a permission in Chromium;
+                            a gate that forgets it leaves the port list empty
+                            (that was 1.1.1's bug).
+       display-capture    — the window, for a video clip.
+       media (audio)      — a keyboard or a mic, for the sound in that clip.
+     Camera, location, notifications and the rest stay denied. */
+  const ALLOW = new Set(['midi', 'midiSysex', 'display-capture', 'fullscreen']);
+  const decide = (permission, details) => {
+    if (ALLOW.has(permission)) return true;
+    if (permission === 'media') {
+      const types = details && details.mediaTypes;
+      return !types || types.every((t) => t === 'audio');
+    }
+    return false;
+  };
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
-    const ok = permission === 'media' && details && details.mediaTypes
-      && details.mediaTypes.every((t) => t === 'audio');
-    callback(!!ok);
+    callback(decide(permission, details));
   });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission, _origin, details) => decide(permission, details));
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
     desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {

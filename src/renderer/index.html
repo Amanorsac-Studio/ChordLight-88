@@ -107,20 +107,19 @@
       <select id="videosound">
         <option value="none">None</option>
         <option value="system">System — what is playing</option>
-        <option value="input">Input device</option>
-        <option value="both">System + input</option>
+        <option value="input">Inputs</option>
+        <option value="both">System + inputs</option>
       </select>
     </div>
     <div class="grp">
-      <label class="fld" for="audioin">Audio input</label>
+      <label class="fld" for="audioin">Keyboard input</label>
       <select id="audioin"><option value="">Default</option></select>
     </div>
     <div class="grp">
       <label class="fld" for="backdrop">Backdrop</label>
       <select id="backdrop">
         <option value="theme">Theme</option>
-        <option value="green">Chroma green</option>
-        <option value="blue">Chroma blue</option>
+        <option value="picture">Your picture</option>
       </select>
     </div>
     <div class="grp">
@@ -154,6 +153,51 @@
     <button class="btn" type="button" id="recfolder" hidden>Recordings folder</button>
     <span class="badge" id="portbadge">Non-exclusive</span>
     <span class="badge" id="sustbadge">Sustain off</span>
+    <button class="btn" type="button" id="advbtn" aria-expanded="false" aria-controls="advanced" title="Vocal input, ducking, video quality, your own backdrop picture">Advanced ▾</button>
+  </div>
+
+  <!-- Advanced: the same drawer, continued — nothing here is needed to play -->
+  <div class="status raised advanced" id="advanced" hidden>
+    <div class="row">
+      <div class="tag"><span class="led"></span>Video</div>
+      <div class="grp">
+        <label class="fld" for="vocalin">Vocal input</label>
+        <select id="vocalin"><option value="">None</option></select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="duck">Duck keys when you talk <span class="rv" id="duckv">−9 dB</span></label>
+        <input type="range" id="duck" min="0" max="24" value="9" title="How far the keyboard and system sound drop while the vocal input hears you">
+      </div>
+      <div class="grp">
+        <label class="fld" for="aoffset">Audio offset <span class="rv" id="aoffsetv">0 ms</span></label>
+        <input type="range" id="aoffset" min="0" max="300" step="5" value="0" title="Delay the sound if it runs ahead of the picture">
+      </div>
+      <div class="grp">
+        <label class="fld" for="vquality">Quality</label>
+        <select id="vquality">
+          <option value="best">Best — 60 fps · 20 Mb/s</option>
+          <option value="good">Good — 30 fps · 8 Mb/s</option>
+          <option value="small">Small — 30 fps · 3 Mb/s</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="tag"><span class="led"></span>Look</div>
+      <div class="grp">
+        <label class="fld">Picture</label>
+        <button class="btn" type="button" id="pickpic">Choose picture…</button>
+        <input type="file" id="picfile" accept=".png,.jpg,.jpeg,.webp,.gif,image/*" hidden>
+      </div>
+      <div class="grp">
+        <label class="fld" for="tint">Tint over picture <span class="rv" id="tintv">40%</span></label>
+        <input type="range" id="tint" min="0" max="100" value="40">
+      </div>
+      <div class="grp">
+        <label class="fld">Tint colour</label>
+        <div class="swatches" id="tintswatches" role="group" aria-label="Tint colour"></div>
+      </div>
+      <span class="badge" id="picbadge" hidden>No picture yet</span>
+    </div>
   </div>
 
   <div class="transport raised empty" id="transport">

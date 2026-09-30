@@ -20,6 +20,8 @@ const PREF_FILE = path.join(PREF_DIR, 'preferences.json');
 const STATE_FILE = path.join(STATE_DIR, 'window-state.json');
 /* what the player recorded — beside the preferences, where the user's things go */
 const REC_DIR = path.join(PREF_DIR, 'Recordings');
+/* the player's own backdrop picture */
+const BACKDROP_DIR = path.join(PREF_DIR, 'Backdrop');
 
 /* what the player chose */
 const PREF_DEFAULTS = {
@@ -36,8 +38,15 @@ const PREF_DEFAULTS = {
   velocity: 'on',
   midiOut: 'None',
   backdrop: 'theme',
+  backdropTint: 40,
+  backdropTintColor: 'black',
   videoSound: 'system',
-  audioInput: ''
+  audioInput: '',
+  vocalInput: '',
+  duck: 9,
+  audioOffset: 0,
+  videoQuality: 'best',
+  advanced: false
 };
 
 /* where the windows were */
@@ -98,4 +107,4 @@ function saveBounds(name, bounds) {
   writeLater('state', STATE_DIR, STATE_FILE, state);
 }
 
-module.exports = { load, save, saveBounds, PREF_FILE, STATE_FILE, REC_DIR };
+module.exports = { load, save, saveBounds, PREF_FILE, STATE_FILE, REC_DIR, BACKDROP_DIR };

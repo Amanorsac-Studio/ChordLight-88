@@ -101,6 +101,39 @@
     });
   };
 
+  /* ================= backdrop (all views) ================= */
+  const TINTS = {
+    black:  { label: 'Black',  c: '#000000' },
+    navy:   { label: 'Navy',   c: '#0A1A3A' },
+    plum:   { label: 'Plum',   c: '#2A0F3A' },
+    forest: { label: 'Forest', c: '#0E2A1C' },
+    white:  { label: 'White',  c: '#FFFFFF' }
+  };
+  let backdrop = 'theme', tint = 40, tintColor = 'black', picture = null;
+  function paintBackdrop() {
+    const S = root.style;
+    S.setProperty('--tint', (TINTS[tintColor] || TINTS.black).c);
+    S.setProperty('--tint-a', String(tint / 100));
+    if (backdrop === 'picture' && picture) S.setProperty('--pic', `url("${picture}")`);
+    else S.removeProperty('--pic');
+    document.body.dataset.backdrop = (backdrop === 'picture' && picture) ? 'picture' : 'theme';
+  }
+  /* pop-outs: the picture itself is fetched once, not published with every note */
+  let pictureAsked = false;
+  function applyBackdropState(s) {
+    backdrop = s.backdrop || 'theme';
+    if (typeof s.tint === 'number') tint = s.tint;
+    if (s.tintColor) tintColor = s.tintColor;
+    if (backdrop === 'picture' && !picture && BRIDGE && (!pictureAsked || s.pictureChanged)) {
+      pictureAsked = true;
+      BRIDGE.getBackdrop().then((url) => { picture = url; paintBackdrop(); }).catch(() => {});
+    }
+    if (s.pictureChanged && BRIDGE) {
+      BRIDGE.getBackdrop().then((url) => { picture = url; paintBackdrop(); }).catch(() => {});
+    }
+    paintBackdrop();
+  }
+
   /* ================= text pop-outs (chord / number) ================= */
   if (TEXT_VIEW) {
     paintTheme();
@@ -108,7 +141,7 @@
       BRIDGE.onState((s) => {
         if (s.accent && ACCENTS[s.accent]) accent = s.accent;
         if (s.mode) mode = s.mode;
-        document.body.dataset.backdrop = s.backdrop || 'theme';
+        applyBackdropState(s);
         paintTheme();
         if (VIEW === 'chord') {
           chordEl.className = s.chordClass;
@@ -209,7 +242,7 @@
         if (s.accent && ACCENTS[s.accent]) accent = s.accent;
         if (s.mode) mode = s.mode;
         if (s.keySize) bed.style.setProperty('--kh', s.keySize + 'px');
-        document.body.dataset.backdrop = s.backdrop || 'theme';
+        applyBackdropState(s);
         paintTheme();
         paintKeys(s);
       });
@@ -401,7 +434,7 @@
     }
 
     const state = Object.assign(
-      { accent, mode, keys, ring, rootPc, tags, cTags, keyLight, velocity, backdrop, keySize: +ksize.value },
+      { accent, mode, keys, ring, rootPc, tags, cTags, keyLight, velocity, backdrop, tint, tintColor, keySize: +ksize.value },
       text
     );
 
@@ -413,8 +446,10 @@
     metaEl.innerHTML = state.metaHTML;
     paintKeys(state);
 
+    lastPublished = state;
     if (BRIDGE) BRIDGE.publish(state);
   }
+  let lastPublished = null;
 
   function applyTheme(persist = true) {
     paintTheme();
@@ -984,77 +1019,144 @@
     const s = Math.floor(performance.now() / 1000 - VID.start);
     vidBtn.textContent = `■ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
-  const soundSel = $('videosound'), audioInSel = $('audioin');
-  let videoSound = 'system', audioInput = '';
+  const soundSel = $('videosound'), audioInSel = $('audioin'), vocalInSel = $('vocalin'),
+        duckEl = $('duck'), duckV = $('duckv'), offsetEl = $('aoffset'), offsetV = $('aoffsetv'), qualSel = $('vquality');
+  let videoSound = 'system', audioInput = '', vocalInput = '', duck = 9, audioOffset = 0, videoQuality = 'best';
 
   /* Audio inputs only get names once the page has been allowed to use one,
-     so the list is (re)built after any successful capture too. */
-  async function refreshInputs() {
-    let devs = [];
-    try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); }
-    catch { devs = []; }
-    const keep = audioInSel.value;
-    audioInSel.innerHTML = '';
+     so both lists are (re)built after any successful capture too. */
+  function fillInputs(sel, devs, want, noneLabel) {
+    const keep = sel.value;
+    sel.innerHTML = '';
     const def = document.createElement('option');
-    def.value = ''; def.textContent = 'Default input';
-    audioInSel.appendChild(def);
+    def.value = ''; def.textContent = noneLabel;
+    sel.appendChild(def);
     devs.forEach((d, i) => {
       const o = document.createElement('option');
       o.value = d.deviceId;
       o.textContent = d.label || `Input ${i + 1}`;
-      audioInSel.appendChild(o);
+      sel.appendChild(o);
     });
-    audioInSel.value = [keep, audioInput].find((v) => v && [...audioInSel.options].some((o) => o.value === v)) || '';
+    sel.value = [keep, want].find((v) => v && [...sel.options].some((o) => o.value === v)) || '';
+  }
+  async function refreshInputs() {
+    let devs = [];
+    try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); }
+    catch { devs = []; }
+    fillInputs(audioInSel, devs, audioInput, 'Default input');
+    fillInputs(vocalInSel, devs, vocalInput, 'None');
   }
   soundSel.addEventListener('change', () => { videoSound = soundSel.value; store({ videoSound }); });
   audioInSel.addEventListener('change', () => { audioInput = audioInSel.value; store({ audioInput }); });
+  vocalInSel.addEventListener('change', () => { vocalInput = vocalInSel.value; store({ vocalInput }); });
+  const duckFace = () => { duckV.textContent = duck ? `−${duck} dB` : 'off'; };
+  const offsetFace = () => { offsetV.textContent = audioOffset + ' ms'; };
+  duckEl.addEventListener('input', () => { duck = +duckEl.value; duckFace(); store({ duck }); if (LIVE.duckGain) LIVE.duckDepth = duck; });
+  offsetEl.addEventListener('input', () => {
+    audioOffset = +offsetEl.value; offsetFace(); store({ audioOffset });
+    if (LIVE.delay) LIVE.delay.delayTime.value = audioOffset / 1000;
+  });
+  qualSel.addEventListener('change', () => { videoQuality = qualSel.value; store({ videoQuality }); });
   if (navigator.mediaDevices) {
     refreshInputs();
     navigator.mediaDevices.addEventListener('devicechange', refreshInputs);
   }
+  /* what the current clip's audio graph exposes, so the sliders work live */
+  const LIVE = { duckGain: null, duckDepth: 0, delay: null };
+  const QUALITY = {
+    best:  { fps: 60, vbps: 20e6, abps: 256e3 },
+    good:  { fps: 30, vbps: 8e6,  abps: 192e3 },
+    small: { fps: 30, vbps: 3e6,  abps: 128e3 }
+  };
 
   /* One video track from the window, and an audio track built to order:
      the system sound the window capture carries (Windows), an input device
      (a keyboard through an interface, a mic, BlackHole on a Mac), or both
      mixed through an AudioContext. */
+  const rawAudio = (id) => (id
+    ? { deviceId: { exact: id }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    : { echoCancellation: false, noiseSuppression: false, autoGainControl: false });
+
+  async function openInput(id, what) {
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: rawAudio(id) });
+      refreshInputs();
+      return st;
+    } catch (err) {
+      toast(`No ${what} — ` + (err.message || err));
+      return null;
+    }
+  }
+
+  /* One video track from the window, and an audio track built to order:
+       system   — what the window capture carries (Windows), i.e. the sounds
+                  the keyboard is triggering in a DAW or Kontakt
+       keyboard — an input device: the keyboard through an interface
+       vocal    — a second input: a mic
+     Keyboard and system go through one gain that the vocal input pushes
+     down while it hears you (the duck); the vocal goes straight in. The
+     whole mix can be delayed a few ms so it lines up with the picture. */
   async function buildStream() {
     const wantSystem = videoSound === 'system' || videoSound === 'both';
     const wantInput  = videoSound === 'input'  || videoSound === 'both';
+    const Q = QUALITY[videoQuality] || QUALITY.best;
     let display;
-    try { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 }, audio: wantSystem }); }
-    catch { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 } }); }
+    try { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: Q.fps }, audio: wantSystem }); }
+    catch { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: Q.fps } }); }
 
     const tracks = [display.getVideoTracks()[0]];
     const sysTrack = wantSystem ? display.getAudioTracks()[0] : null;
-    let inStream = null;
+    let keyStream = null, vocStream = null;
     if (wantInput) {
-      try {
-        inStream = await navigator.mediaDevices.getUserMedia({
-          audio: audioInput ? { deviceId: { exact: audioInput }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
-                            : { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
-        });
-        refreshInputs();
-      } catch (err) {
-        toast('No audio input — ' + (err.message || err));
-      }
+      keyStream = await openInput(audioInput, 'keyboard input');
+      if (vocalInput && vocalInput !== audioInput) vocStream = await openInput(vocalInput, 'vocal input');
     }
-    const inTrack = inStream ? inStream.getAudioTracks()[0] : null;
-    let ctx = null;
-    if (sysTrack && inTrack) {
-      ctx = new AudioContext();
+    const keyTrack = keyStream ? keyStream.getAudioTracks()[0] : null;
+    const vocTrack = vocStream ? vocStream.getAudioTracks()[0] : null;
+    const sources = [sysTrack, keyTrack].filter(Boolean);
+
+    let ctx = null, meterTimer = 0;
+    LIVE.duckGain = null; LIVE.delay = null;
+    if (sources.length + (vocTrack ? 1 : 0) > 1 || (sources.length && audioOffset > 0)) {
+      ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
       const dest = ctx.createMediaStreamDestination();
-      ctx.createMediaStreamSource(new MediaStream([sysTrack])).connect(dest);
-      ctx.createMediaStreamSource(new MediaStream([inTrack])).connect(dest);
+      const delay = ctx.createDelay(1);
+      delay.delayTime.value = audioOffset / 1000;
+      delay.connect(dest);
+      const bedGain = ctx.createGain();        // keyboard + system: the part that ducks
+      bedGain.connect(delay);
+      sources.forEach((t) => ctx.createMediaStreamSource(new MediaStream([t])).connect(bedGain));
+      if (vocTrack) {
+        const voc = ctx.createMediaStreamSource(new MediaStream([vocTrack]));
+        voc.connect(delay);
+        /* the duck: watch the vocal level, drop the bed while it is up */
+        const an = ctx.createAnalyser();
+        an.fftSize = 512;
+        voc.connect(an);
+        const buf = new Float32Array(an.fftSize);
+        LIVE.duckDepth = duck;
+        meterTimer = setInterval(() => {
+          an.getFloatTimeDomainData(buf);
+          let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+          const dB = 20 * Math.log10(Math.sqrt(sum / buf.length) + 1e-9);
+          const talking = dB > -42;              // a voice at the mic, not room tone
+          const target = talking ? Math.pow(10, -LIVE.duckDepth / 20) : 1;
+          bedGain.gain.setTargetAtTime(target, ctx.currentTime, talking ? 0.02 : 0.25);
+        }, 20);
+      }
+      LIVE.duckGain = bedGain; LIVE.delay = delay;
       tracks.push(dest.stream.getAudioTracks()[0]);
-    } else if (sysTrack || inTrack) {
-      tracks.push(sysTrack || inTrack);
+    } else if (sources.length || vocTrack) {
+      tracks.push(sources[0] || vocTrack);
     }
-    if (!sysTrack && wantSystem && !inTrack) toast('No system sound on this machine — picture only');
+    if (!sysTrack && wantSystem && !keyTrack && !vocTrack) toast('No system sound on this machine — picture only');
     const stream = new MediaStream(tracks);
     const stopAll = () => {
+      clearInterval(meterTimer);
       display.getTracks().forEach((t) => t.stop());
-      if (inStream) inStream.getTracks().forEach((t) => t.stop());
+      [keyStream, vocStream].forEach((st) => st && st.getTracks().forEach((t) => t.stop()));
       if (ctx) ctx.close();
+      LIVE.duckGain = null; LIVE.delay = null;
     };
     return { stream, stopAll, ended: display.getVideoTracks()[0] };
   }
@@ -1070,7 +1172,8 @@
       : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
       .find((m) => MediaRecorder.isTypeSupported(m)) || '';
     VID.chunks = [];
-    VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 14e6, audioBitsPerSecond: 192e3 });
+    const Q = QUALITY[videoQuality] || QUALITY.best;
+    VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Q.vbps, audioBitsPerSecond: Q.abps });
     VID.rec.ondataavailable = (e) => { if (e.data.size) VID.chunks.push(e.data); };
     VID.rec.onstop = async () => {
       stopAll();
@@ -1129,13 +1232,49 @@
   });
 
   /* ================= backdrop ================= */
-  const backdropSel = $('backdrop');
-  let backdrop = 'theme';
+  const backdropSel = $('backdrop'), tintEl = $('tint'), tintV = $('tintv'), picBadge = $('picbadge');
+  const tintFace = () => { tintV.textContent = tint + '%'; };
+  function picFace() {
+    picBadge.hidden = !!picture;
+    picBadge.textContent = 'No picture yet — choose one';
+  }
   backdropSel.addEventListener('change', () => {
     backdrop = backdropSel.value;
-    document.body.dataset.backdrop = backdrop;
     store({ backdrop });
-    paint();
+    if (backdrop === 'picture' && !picture) { $('picfile').click(); }
+    paintBackdrop(); paint();
+  });
+  tintEl.addEventListener('input', () => { tint = +tintEl.value; tintFace(); store({ backdropTint: tint }); paintBackdrop(); paint(); });
+  (function buildTintSwatches() {
+    const box = $('tintswatches');
+    Object.entries(TINTS).forEach(([k, T]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.k = k; b.title = T.label; b.setAttribute('aria-label', T.label);
+      b.style.background = T.c;
+      b.addEventListener('click', () => { tintColor = k; markTint(); store({ backdropTintColor: k }); paintBackdrop(); paint(); });
+      box.appendChild(b);
+    });
+  })();
+  const markTint = () => [...$('tintswatches').children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === tintColor)));
+  $('pickpic').addEventListener('click', () => $('picfile').click());
+  $('picfile').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      const ext = (f.name.split('.').pop() || 'png').toLowerCase();
+      if (BRIDGE) picture = await BRIDGE.setBackdrop(new Uint8Array(await f.arrayBuffer()), ext);
+      else picture = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+      backdrop = 'picture'; backdropSel.value = 'picture';
+      store({ backdrop });
+      picFace(); paintBackdrop();
+      /* the pop-outs fetch the new picture themselves */
+      if (BRIDGE) BRIDGE.publish(Object.assign({}, lastPublished || {}, { backdrop, tint, tintColor, pictureChanged: true }));
+      paint();
+      toast('Backdrop  ' + f.name);
+    } catch (err) {
+      toast('Could not use that picture — ' + (err.message || err));
+    }
   });
 
   /* ================= window chrome and pop-outs ================= */
@@ -1228,13 +1367,23 @@
     b.addEventListener('click', () => BRIDGE && BRIDGE.openExternal(b.dataset.link));
   });
 
-  const setup = $('setup'), setupbtn = $('setupbtn');
+  const setup = $('setup'), setupbtn = $('setupbtn'), advanced = $('advanced'), advbtn = $('advbtn');
+  let advOpen = false;
+  function showAdvanced(v) {
+    advOpen = v;
+    advanced.hidden = !(v && !setup.hidden);
+    advbtn.setAttribute('aria-expanded', String(v));
+    advbtn.classList.toggle('on', v);
+    advbtn.textContent = v ? 'Advanced ▴' : 'Advanced ▾';
+  }
   setupbtn.addEventListener('click', () => {
     const open = setup.hidden;
     setup.hidden = !open;
     setupbtn.setAttribute('aria-expanded', String(open));
     setupbtn.classList.toggle('on', open);
+    showAdvanced(advOpen);
   });
+  advbtn.addEventListener('click', () => { showAdvanced(!advOpen); store({ advanced: advOpen }); });
 
   $('modebtn').addEventListener('click', () => { mode = mode === 'dark' ? 'light' : 'dark'; applyTheme(); });
   ksize.addEventListener('input', (e) => {
@@ -1300,16 +1449,26 @@
     if (settingsCache.spelling) spellsel.value = settingsCache.spelling;
     if (settingsCache.midiChannel) chsel.value = settingsCache.midiChannel;
     if (settingsCache.keySize) { ksize.value = settingsCache.keySize; bed.style.setProperty('--kh', settingsCache.keySize + 'px'); }
-    if (['none', 'system', 'input', 'both'].includes(settingsCache.videoSound)) {
-      videoSound = settingsCache.videoSound; soundSel.value = videoSound;
-    }
-    if (typeof settingsCache.audioInput === 'string') { audioInput = settingsCache.audioInput; refreshInputs(); }
+    if (['none', 'system', 'input', 'both'].includes(settingsCache.videoSound)) videoSound = settingsCache.videoSound;
+    soundSel.value = videoSound;
+    if (typeof settingsCache.audioInput === 'string') audioInput = settingsCache.audioInput;
+    if (typeof settingsCache.vocalInput === 'string') vocalInput = settingsCache.vocalInput;
+    refreshInputs();
+    if (Number.isFinite(+settingsCache.duck)) duck = Math.max(0, Math.min(24, +settingsCache.duck));
+    duckEl.value = duck; duckFace();
+    if (Number.isFinite(+settingsCache.audioOffset)) audioOffset = Math.max(0, Math.min(300, +settingsCache.audioOffset));
+    offsetEl.value = audioOffset; offsetFace();
+    if (QUALITY[settingsCache.videoQuality]) { videoQuality = settingsCache.videoQuality; qualSel.value = videoQuality; }
     refreshRecList();
-    if (['theme', 'green', 'blue'].includes(settingsCache.backdrop)) {
-      backdrop = settingsCache.backdrop;
-      backdropSel.value = backdrop;
-      document.body.dataset.backdrop = backdrop;
-    }
+    backdrop = settingsCache.backdrop === 'picture' ? 'picture' : 'theme';   // chroma from 1.1 falls back to the theme
+    backdropSel.value = backdrop;
+    if (Number.isFinite(+settingsCache.backdropTint)) tint = Math.max(0, Math.min(100, +settingsCache.backdropTint));
+    tintEl.value = tint; tintFace();
+    if (TINTS[settingsCache.backdropTintColor]) tintColor = settingsCache.backdropTintColor;
+    markTint();
+    if (BRIDGE) { try { picture = await BRIDGE.getBackdrop(); } catch { picture = null; } }
+    picFace(); paintBackdrop();
+    showAdvanced(settingsCache.advanced === true);
     if (settingsCache.velocity === 'on' || settingsCache.velocity === 'off') {
       velocity = settingsCache.velocity === 'on';
       velSel.value = settingsCache.velocity;

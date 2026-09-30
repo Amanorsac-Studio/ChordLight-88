@@ -2,6 +2,26 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.2.0 — September 2026
+
+- **Your MIDI devices are back.** 1.1.1 added a permission gate for video
+  capture that forgot Web MIDI is itself a permission, so the input list came
+  up empty and MIDI out had nothing to offer. The gate now names MIDI, the
+  window capture and audio inputs; everything else stays denied.
+- **Video records again** — the same gate was refusing the window capture.
+- **Advanced** — a button at the end of Setup opens a second row of settings.
+  Nothing in Setup moved; nothing there is needed to play.
+- **Two audio inputs.** Setup › Keyboard input and Advanced › Vocal input. Pick
+  a mic for the vocal and the keys **duck** while you talk — Advanced › Duck
+  keys when you talk sets how far, in dB, or off.
+- **Audio offset** — delay the sound a few ms if it runs ahead of the picture.
+- **Video quality** — Best (60 fps, 20 Mb/s), Good, or Small.
+- **Your picture as the backdrop.** Setup › Backdrop › Your picture, then
+  Advanced › Choose picture. A tint of chosen colour and strength sits over
+  it and the panels go to glass so it shows through. Chroma green and blue
+  are gone; a saved chroma setting falls back to the theme.
+- Video sound's "Input device" is now "Inputs" — both of them.
+
 ## 1.1.1 — September 2026
 
 - **Pedal › Ignore the pedal** — the sustain pedal does nothing; notes end when
