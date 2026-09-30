@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('chordlight', {
   onState: (cb) => ipcRenderer.on('state:update', (_e, state) => cb(state)),
 
   /* pop-out windows */
-  togglePopout: (name) => ipcRenderer.invoke('popout:toggle', name),
+  togglePopout: (name, docked) => ipcRenderer.invoke('popout:toggle', name, docked),
   onPopoutChanged: (cb) => ipcRenderer.on('popout:changed', (_e, info) => cb(info)),
 
   /* persisted settings */
@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('chordlight', {
   /* frameless window chrome */
   windowControl: (action) => ipcRenderer.send('window:control', action),
   onMaximized: (cb) => ipcRenderer.on('window:maximized', (_e, v) => cb(v)),
+  onFullscreen: (cb) => ipcRenderer.on('window:fullscreen', (_e, v) => cb(v)),
+
+  /* recordings land in Documents/Amanorsac Studio/Chordlight 88/Recordings */
+  saveRecording: (name, bytes) => ipcRenderer.invoke('rec:save', { name, bytes }),
+  openRecordings: () => ipcRenderer.send('rec:open-folder'),
 
   openExternal: (url) => ipcRenderer.send('open:external', url),
 

@@ -1,6 +1,7 @@
 'use strict';
 const path = require('path');
-const { app, BrowserWindow, ipcMain, shell, screen } = require('electron');
+const fs = require('fs');
+const { app, BrowserWindow, ipcMain, shell, screen, session, desktopCapturer } = require('electron');
 const settings = require('./settings');
 
 const isMac = process.platform === 'darwin';
@@ -67,7 +68,7 @@ function createMainWindow() {
   mainWin.once('ready-to-show', () => mainWin.show());
 
   const remember = () => {
-    if (mainWin && !mainWin.isDestroyed() && !mainWin.isMaximized()) {
+    if (mainWin && !mainWin.isDestroyed() && !mainWin.isMaximized() && !mainWin.isFullScreen()) {
       settings.saveBounds('main', mainWin.getBounds());
     }
   };
@@ -76,6 +77,8 @@ function createMainWindow() {
 
   mainWin.on('maximize', () => sendToMain('window:maximized', true));
   mainWin.on('unmaximize', () => sendToMain('window:maximized', false));
+  mainWin.on('enter-full-screen', () => sendToMain('window:fullscreen', true));
+  mainWin.on('leave-full-screen', () => sendToMain('window:fullscreen', false));
 
   mainWin.on('closed', () => {
     mainWin = null;
@@ -87,15 +90,29 @@ function createMainWindow() {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  // Dropping a MIDI file on the window is a gesture for the renderer to read,
+  // never a navigation: without this, Chromium would happily replace the app
+  // with the dropped file.
+  mainWin.webContents.on('will-navigate', (e, url) => {
+    if (url !== mainWin.webContents.getURL()) e.preventDefault();
+  });
 }
 
-function createPopout(name) {
-  const saved = clampToDisplay(settings.load().bounds[name]);
+/* `docked` is where the card sat in the main window, in screen pixels. A
+   pop-out opens at exactly that size and place, so detaching changes nothing
+   the eye can see — the keys are the width they were, not a remembered
+   smaller window from last time. */
+function createPopout(name, docked) {
   const spec = POPOUT_SPEC[name] || POPOUT_SPEC.chord;
+  const from = docked && docked.width > 0
+    ? { width: Math.round(docked.width), height: Math.round(docked.height), x: Math.round(docked.x), y: Math.round(docked.y) }
+    : settings.load().bounds[name];
+  const saved = clampToDisplay(from);
 
   const win = new BrowserWindow({
-    width: saved?.width ?? spec.width,
-    height: saved?.height ?? spec.height,
+    width: Math.max(spec.minWidth, saved?.width ?? spec.width),
+    height: Math.max(spec.minHeight, saved?.height ?? spec.height),
     x: saved?.x,
     y: saved?.y,
     minWidth: spec.minWidth,
@@ -166,13 +183,13 @@ ipcMain.on('state:publish', (_e, state) => {
   }
 });
 
-ipcMain.handle('popout:toggle', (_e, name) => {
+ipcMain.handle('popout:toggle', (_e, name, docked) => {
   if (!Object.prototype.hasOwnProperty.call(popouts, name)) return false;
   if (popouts[name]) {
     closePopout(name);
     return false;
   }
-  createPopout(name);
+  createPopout(name, docked);
   return true;
 });
 
@@ -185,7 +202,42 @@ ipcMain.on('window:control', (e, action) => {
   if (action === 'minimize') win.minimize();
   else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
   else if (action === 'close') win.close();
+  else if (action === 'fullscreen') win.setFullScreen(!win.isFullScreen());
 });
+
+/* ------------------------------------------------------------------ *
+ * Recordings — MIDI takes and screen captures
+ *
+ * The renderer hands over bytes and a name; the folder is always
+ * Documents/Amanorsac Studio/Chordlight 88/Recordings (B48), and the name is
+ * flattened to a plain filename here so nothing can escape it.
+ * ------------------------------------------------------------------ */
+ipcMain.handle('rec:save', async (_e, { name, bytes }) => {
+  const safe = String(name || 'recording').replace(/[^\w .,()-]+/g, '_').slice(0, 120);
+  await fs.promises.mkdir(settings.REC_DIR, { recursive: true });
+  const file = path.join(settings.REC_DIR, safe);
+  await fs.promises.writeFile(file, Buffer.from(bytes));
+  return file;
+});
+ipcMain.on('rec:open-folder', () => {
+  fs.mkdirSync(settings.REC_DIR, { recursive: true });
+  shell.openPath(settings.REC_DIR);
+});
+
+/* When the renderer asks for a display stream it gets this window and
+   nothing else — no picker, no other windows or screens. On Windows the
+   system audio comes along, so a clip carries what Kontakt was playing. */
+function allowSelfCapture() {
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
+      .then((sources) => {
+        const mine = sources.find((src) => mainWin && src.name === mainWin.getTitle()) || sources[0];
+        if (!mine) { callback({}); return; }
+        callback({ video: mine, audio: process.platform === 'win32' ? 'loopback' : undefined });
+      })
+      .catch(() => callback({}));
+  });
+}
 
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(),
@@ -223,6 +275,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    allowSelfCapture();
     createMainWindow();
 
     // Re-open the pop-outs that were open when the app last closed.

@@ -21,6 +21,14 @@ Amanorsac Studio · Windows and macOS · Electron.
 - **Notes / Sol-fa / Off** labelling. The sol-fa ladder is
   Do Di Re Mo Mi Fa Fi So Si La Ta Ti.
 - **Six accent colours and light/dark**, with the whole UI retinted from the accent.
+- **Keys on the floor** — bottom of the window, edge to edge, at any size; detached,
+  the keys window opens at exactly the docked size and the keys fill it.
+- **MIDI file playback** with transport, chord stepping, speed and loop, optionally
+  out to a MIDI port so a VST makes the sound.
+- **Recording** — MIDI takes and a five-minute "Keep" buffer to `.mid`; video of
+  the window to WebM (system audio on Windows).
+- **Stage** full-screen mode, solid/gradient key light, fixed/sensitive velocity,
+  chroma backdrop for keying.
 - **Shared MIDI** — ports are never opened exclusively, so a DAW or Kontakt can hold
   the same controller at the same time. Virtual cables (loopMIDI, LoopBe, IAC) appear
   like any hardware port, and hot-plugged devices show up without a restart.

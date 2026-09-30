@@ -18,6 +18,8 @@ const PREF_DIR = path.join(app.getPath('documents'), 'Amanorsac Studio', PRODUCT
 const STATE_DIR = path.join(app.getPath('appData'), 'Amanorsac Studio', PRODUCT);
 const PREF_FILE = path.join(PREF_DIR, 'preferences.json');
 const STATE_FILE = path.join(STATE_DIR, 'window-state.json');
+/* what the player recorded — beside the preferences, where the user's things go */
+const REC_DIR = path.join(PREF_DIR, 'Recordings');
 
 /* what the player chose */
 const PREF_DEFAULTS = {
@@ -29,7 +31,11 @@ const PREF_DEFAULTS = {
   keySize: 188,
   midiPort: 'All inputs',
   midiChannel: 'Omni',
-  pedalMode: 'chord'
+  pedalMode: 'chord',
+  keyLight: 'solid',
+  velocity: 'on',
+  midiOut: 'None',
+  backdrop: 'theme'
 };
 
 /* where the windows were */
@@ -90,4 +96,4 @@ function saveBounds(name, bounds) {
   writeLater('state', STATE_DIR, STATE_FILE, state);
 }
 
-module.exports = { load, save, saveBounds, PREF_FILE, STATE_FILE };
+module.exports = { load, save, saveBounds, PREF_FILE, STATE_FILE, REC_DIR };

@@ -25,7 +25,13 @@
       <button type="button" data-mode="off" aria-pressed="false">Off</button>
     </div>
     <div class="tbstat"><span class="led"></span><span id="tbport">Scanning…</span></div>
-    <button class="btn icon push" id="modebtn" type="button" title="Light / dark" aria-label="Switch between light and dark">☾</button>
+    <div class="recgroup push" role="group" aria-label="Recording">
+      <button class="btn" id="recbtn" type="button" aria-pressed="false" title="Record the MIDI you play to a .mid file">● Rec</button>
+      <button class="btn" id="keepbtn" type="button" title="Save the last five minutes you played, even without pressing Rec">Keep</button>
+      <button class="btn" id="vidbtn" type="button" aria-pressed="false" title="Record a video of this window">◉ Video</button>
+    </div>
+    <button class="btn icon" id="stagebtn" type="button" title="Stage — full screen, keys edge to edge (F11)" aria-label="Stage mode">⛶</button>
+    <button class="btn icon" id="modebtn" type="button" title="Light / dark" aria-label="Switch between light and dark">☾</button>
     <button class="btn" id="setupbtn" type="button" aria-expanded="false" aria-controls="setup">⚙ Setup</button>
     <button class="btn" id="aboutbtn" type="button" aria-haspopup="dialog">About</button>
     <div class="wbtn">
@@ -71,16 +77,6 @@
 
   </div>
 
-  <section class="card bedwrap well" id="keycard">
-    <button class="btn poptab" type="button" data-pop="keys" title="Pop it out" aria-label="Pop the keys into their own window">⇱</button>
-    <div class="eyebrow keyeyebrow"><span class="led"></span><span id="keyeyebrow">Keys · 88 · A0 — C8</span></div>
-    <div class="stage">
-      <div class="namerow" id="namerow"></div>
-      <div class="felt"></div>
-      <div class="keybed" id="bed"></div>
-    </div>
-  </section>
-
   <div class="status raised" id="setup" hidden>
     <div class="grp">
       <label class="fld" for="port">MIDI input</label>
@@ -96,6 +92,25 @@
       </select>
     </div>
     <div class="grp">
+      <label class="fld" for="out">MIDI output</label>
+      <select id="out"><option>None</option></select>
+    </div>
+    <div class="grp">
+      <label class="fld" for="keylight">Key light</label>
+      <select id="keylight">
+        <option value="solid">Solid</option>
+        <option value="gradient">Gradient</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label class="fld" for="backdrop">Backdrop</label>
+      <select id="backdrop">
+        <option value="theme">Theme</option>
+        <option value="green">Chroma green</option>
+        <option value="blue">Chroma blue</option>
+      </select>
+    </div>
+    <div class="grp">
       <label class="fld" for="pedal">Pedal</label>
       <select id="pedal">
         <option value="chord">Current chord</option>
@@ -107,7 +122,14 @@
       <div class="swatches" id="swatches" role="group" aria-label="Accent colour"></div>
     </div>
     <div class="grp">
-      <label class="fld">Velocity</label>
+      <label class="fld" for="velmode">Velocity</label>
+      <select id="velmode">
+        <option value="on">Sensitive</option>
+        <option value="off">Fixed</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label class="fld">Level</label>
       <div class="vmeter"><i id="vbar"></i></div>
     </div>
     <div class="grp">
@@ -115,9 +137,46 @@
       <input type="range" id="ksize" min="140" max="280" value="188">
     </div>
     <div class="spacer"></div>
+    <button class="btn" type="button" id="recfolder" hidden>Recordings folder</button>
     <span class="badge" id="portbadge">Non-exclusive</span>
     <span class="badge" id="sustbadge">Sustain off</span>
   </div>
+
+  <div class="transport raised empty" id="transport">
+    <button class="btn icon" type="button" id="tcollapse" title="Hide the controls" aria-label="Hide the controls">▾</button>
+    <button class="btn" type="button" id="openmidi" title="Open a MIDI file and play it back — or drop one anywhere on the window">Open MIDI file…</button>
+    <input type="file" id="midifile" accept=".mid,.midi,audio/midi" hidden>
+    <div class="tname" id="tname">Drop a .mid anywhere, or open one</div>
+    <div class="tbody" id="tbody">
+      <button class="btn icon" type="button" id="tprev" title="Previous chord" aria-label="Previous chord">⏮</button>
+      <button class="btn icon" type="button" id="tplay" title="Play" aria-label="Play">▶</button>
+      <button class="btn icon" type="button" id="tnext" title="Next chord" aria-label="Next chord">⏭</button>
+      <span class="ttime mono" id="ttime">0:00 / 0:00</span>
+      <input type="range" id="tseek" min="0" max="1000" value="0" aria-label="Position">
+      <label class="fld" for="tspeed">Speed</label>
+      <select id="tspeed">
+        <option value="0.25">¼×</option><option value="0.5">½×</option>
+        <option value="0.75">¾×</option><option value="1" selected>1×</option>
+        <option value="1.25">1¼×</option><option value="1.5">1½×</option>
+      </select>
+      <button class="btn" type="button" id="tloop" aria-pressed="false">Loop</button>
+      <button class="btn" type="button" id="tclose">Eject</button>
+    </div>
+  </div>
+
+  <div class="drophint" id="drophint" hidden><div>Drop a MIDI file to play it</div></div>
+  <button class="btn stageexit" id="stageexit" type="button" hidden title="Leave stage mode (Esc)">✕ Exit stage</button>
+  <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+
+  <section class="card bedwrap well" id="keycard">
+    <button class="btn poptab" type="button" data-pop="keys" title="Pop it out" aria-label="Pop the keys into their own window">⇱</button>
+    <div class="eyebrow keyeyebrow"><span class="led"></span><span id="keyeyebrow">Keys · 88 · A0 — C8</span></div>
+    <div class="stage">
+      <div class="namerow" id="namerow"></div>
+      <div class="felt"></div>
+      <div class="keybed" id="bed"></div>
+    </div>
+  </section>
 
 </div>
 

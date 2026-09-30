@@ -2,6 +2,29 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.1.0 — September 2026
+
+- **The keyboard is the floor of the window.** It sits at the bottom, edge to
+  edge, at any window size — maximise the window and it stretches across the
+  screen. Detach it and the window opens at exactly the size the keys had, so
+  nothing shrinks; drag that window bigger and the keys grow with it.
+- **Play a MIDI file.** Open one from the strip above the keys, or drop it on
+  the window. Play, pause, step chord by chord, scrub, slow down to quarter
+  speed, loop. Pick a MIDI output in Setup and the file plays through Kontakt
+  or your DAW while Chordlight shows it.
+- **Record what you play.** ● Rec makes a take; Keep saves the last five minutes
+  even if you never pressed record. Standard .mid files, the timing exactly as
+  played, in Documents › Amanorsac Studio › Chordlight 88 › Recordings.
+- **Record a video.** ◉ Video captures the Chordlight window to a WebM file —
+  on Windows with the system audio, so the clip carries what was playing.
+- **Stage** (⛶ or F11): full screen, no chrome, chord left, number right, keys
+  across the whole screen. Esc to leave.
+- **Key light: Solid or Gradient**, and **Velocity: Sensitive or Fixed**. Solid
+  with velocity is the new default.
+- **Backdrop: chroma green or blue** behind everything but the keys, glows off,
+  for keying the app over your own video.
+- Preferences remembered: key light, velocity, pedal, backdrop, MIDI output.
+
 ## 1.0.1 — September 2026
 
 - **The sustain pedal no longer jumbles the chords.** Play a new chord with the

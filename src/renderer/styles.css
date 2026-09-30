@@ -29,11 +29,24 @@ body{
   background-attachment:fixed;
   -webkit-font-smoothing:antialiased;
 }
+/* The keyboard is the floor of the window: always last, always pinned to the
+   bottom, always the full width — edge to edge at any window size, the way a
+   real instrument sits under everything else. The panels above it keep their
+   own side margins. */
 .app{
   display:flex;flex-direction:column;gap:13px;
-  padding-block:16px;padding-left:16px;padding-right:16px;
-  max-width:1560px;margin:0 auto;
+  padding:0;max-width:none;margin:0;
 }
+.app > .titlebar{margin:12px 16px 0}
+.app > .deck,.app > .status,.app > .transport{margin:0 16px}
+.app > .bedwrap{
+  margin-top:auto;                     /* everything else sits above; keys hold the floor */
+  border-radius:0;border-left:0;border-right:0;border-bottom:0;
+  padding:8px 0 0;
+}
+body[data-view="full"] .bedwrap .stage{min-width:0}
+body[data-view="full"] .keyeyebrow{padding-left:16px}
+body[data-view="full"] .bedwrap .poptab{right:14px}
 .raised{
   background:linear-gradient(180deg,var(--panel-hi) 0%,var(--panel) 100%);
   border:1px solid var(--edge);border-radius:9px;
@@ -226,6 +239,11 @@ button.btn.on{
   background:var(--vmid);opacity:.9;pointer-events:none;
 }
 .wk.ring .lbl,.bk.ring .lbl{opacity:.55}
+/* Solid: the whole key takes one flat colour instead of the three-stop ramp.
+   The shade still comes from the velocity, so a hard note reads brighter. */
+.keybed.solid .wk.on,.keybed.solid .bk.on{background:var(--vmid)}
+.keybed.solid .wk.ring{background:color-mix(in srgb,var(--vmid) 46%,var(--key-w2))}
+.keybed.solid .bk.ring{background:color-mix(in srgb,var(--vmid) 58%,var(--key-b2))}
 .lbl{pointer-events:none;opacity:.5;font-weight:500}
 .wk.on .lbl,.bk.on .lbl{opacity:1;font-weight:600}
 .dot{
@@ -267,7 +285,7 @@ input[type=range]{width:112px;accent-color:var(--a2);background:transparent}
    Electron shell — frameless chrome, drag regions, pop-out views
    ============================================================ */
 html,body{height:100%}
-.app{min-height:100%}
+.app{min-height:100vh}
 
 /* the title bar is the window's drag handle; its controls are not */
 .titlebar{-webkit-app-region:drag}
@@ -290,24 +308,29 @@ body.mac .wbtn{display:none}
 /* ---------- keys pop-out ---------- */
 body[data-view="keys"] .titlebar,
 body[data-view="keys"] .deck,
+body[data-view="keys"] .transport,
 body[data-view="keys"] .status{display:none}
 body[data-view="keys"] .app{padding:0;gap:0;height:100%;max-width:none}
 body[data-view="keys"] .bedwrap{
-  height:100%;border-radius:0;border:0;padding:8px 12px 10px;
+  height:100%;border-radius:0;border:0;padding:8px 0 0;   /* same as docked */
   -webkit-app-region:drag;
 }
 body[data-view="keys"] .bedwrap button{-webkit-app-region:no-drag}
-body[data-view="keys"] .keyeyebrow{display:none}
-/* the keys keep the size they have in the main window — the window does not
-   squash them. Only the docked key-size slider changes their height. */
-body[data-view="keys"] .stage{min-width:820px}
-body[data-view="keys"] .keybed{height:var(--kh,188px)}
+body[data-view="keys"] .keyeyebrow{padding-left:16px}   /* kept: same height as docked */
+/* The window opens at the docked card's exact size, and the keys fill it —
+   so detaching changes nothing, and dragging the window bigger makes the
+   keys bigger rather than leaving a border. */
+body[data-view="keys"] .bedwrap{display:flex;flex-direction:column}
+body[data-view="keys"] .stage{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+body[data-view="keys"] .keybed{flex:1 1 auto;height:auto;min-height:0}
 
 body[data-view="chord"] .titlebar,
 body[data-view="chord"] #numcard,
 body[data-view="chord"] .ctrlcard,
 body[data-view="chord"] .bedwrap,
 body[data-view="chord"] .status,
+body[data-view="chord"] .transport,
+body[data-view="number"] .transport,
 body[data-view="number"] .titlebar,
 body[data-view="number"] #chordcard,
 body[data-view="number"] .ctrlcard,
@@ -385,4 +408,122 @@ body[data-view="number"] .eyebrow{font-size:clamp(8px,1.7vh,11px)}
 .copyright{
   margin:14px 0 0;font-family:var(--font-m);font-size:10px;letter-spacing:.08em;
   color:var(--text-faint);
+}
+
+/* ============================================================
+   File playback — the transport and the drop target
+   ============================================================ */
+.transport{
+  display:flex;align-items:center;gap:12px;padding:10px 14px;
+  border-radius:12px;background:var(--panel);border:1px solid var(--edge);
+  -webkit-app-region:no-drag;
+}
+.transport .tname{
+  font-family:var(--font-m);font-size:10.5px;letter-spacing:.06em;color:var(--text-dim);
+  max-width:24ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none;
+}
+.transport .tbody{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0}
+.transport.collapsed .tbody{display:none}
+/* nothing loaded yet: just the invitation and the Open button */
+.transport.empty .tbody,.transport.empty #tcollapse{display:none}
+.transport.empty .tname{max-width:none;color:var(--text-faint)}
+.transport:not(.empty) #openmidi{display:none}
+.transport .ttime{font-size:11px;color:var(--text-dim);white-space:nowrap;flex:none}
+.transport input[type=range]{flex:1 1 120px;min-width:80px}
+.transport label.fld{margin:0}
+#tplay{font-size:13px}
+
+/* Dropping a file anywhere over the window */
+.drophint{
+  position:fixed;inset:0;z-index:150;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--void) 72%,transparent);
+  backdrop-filter:blur(2px);pointer-events:none;
+}
+.drophint div{
+  font-family:var(--font-m);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--text);padding:22px 30px;border-radius:14px;
+  border:2px dashed color-mix(in srgb,var(--a3) 70%,transparent);
+  background:color-mix(in srgb,var(--panel) 86%,transparent);
+}
+
+/* ============================================================
+   Recording controls
+   ============================================================ */
+.recgroup{display:flex;gap:6px;align-items:center}
+#recbtn[aria-pressed="true"],#vidbtn[aria-pressed="true"]{
+  color:#fff;background:#C8102E;border-color:#E23A55;
+  font-variant-numeric:tabular-nums;
+}
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:220;
+  font-family:var(--font-m);font-size:11.5px;letter-spacing:.04em;color:var(--text);
+  background:var(--panel-hi);border:1px solid var(--edge-hi);border-radius:8px;
+  padding:9px 14px;box-shadow:0 8px 28px var(--shadow);max-width:min(80vw,640px);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;
+}
+
+/* ============================================================
+   Stage — full screen, keys edge to edge, one slim readout row
+   ============================================================ */
+body.onstage{overflow:hidden}
+body.onstage .app{max-width:none;padding:0;gap:0;height:100vh;min-height:0}
+body.onstage .titlebar,body.onstage .ctrlcard,body.onstage .status,
+body.onstage .keyeyebrow,body.onstage .poptab,body.onstage .transport{display:none}
+body.onstage .deck{flex-wrap:nowrap;gap:0;padding:14px 3vw 0;flex:none}
+body.onstage .readout{
+  flex:1 1 0;min-height:0;padding:0;background:none;border:0;box-shadow:none;border-radius:0;
+  justify-content:flex-end;
+}
+body.onstage .readout::before{display:none}
+body.onstage .card.popped{display:none}
+body.onstage .eyebrow{margin-bottom:4px;padding-right:0;font-size:clamp(9px,1.1vw,12px)}
+body.onstage .big{font-size:clamp(48px,8vw,132px)}
+body.onstage .sub{font-size:clamp(11px,1.2vw,15px)}
+/* the chord card has no sub-line, so it gets an invisible one the height of
+   the number card's — the two big glyphs then sit on the same baseline */
+body.onstage .chordmeta{
+  display:flex;visibility:hidden;min-height:0;margin-top:10px;
+  height:calc(1.1 * clamp(11px,1.2vw,15px));
+}
+body.onstage #numcard{text-align:right;align-items:flex-end}
+body.onstage #numcard .eyebrow{justify-content:flex-end}
+body.onstage .bedwrap{
+  flex:1 1 auto;min-height:0;margin:0;padding:0 0 0;border:0;border-radius:0;
+  background:none;box-shadow:none;overflow:hidden;display:flex;flex-direction:column;
+}
+body.onstage .stage{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+body.onstage .keybed{flex:1 1 auto;height:auto;min-height:0}
+body.onstage .namerow{height:clamp(40px,6vh,64px)}
+body.onstage .wk{border-radius:0}
+.stageexit{
+  position:fixed;top:14px;right:14px;z-index:210;opacity:0;transition:opacity .25s;
+  -webkit-app-region:no-drag;
+}
+body.onstage.hint .stageexit{opacity:1}
+
+/* ============================================================
+   Backdrop — a keyable flat colour behind everything but the keys
+   ============================================================ */
+body[data-backdrop="green"]{--chroma:#00B140}
+body[data-backdrop="blue"]{--chroma:#0047BB}
+body[data-backdrop="green"],body[data-backdrop="blue"]{
+  background:var(--chroma);
+}
+body[data-backdrop="green"] .app,body[data-backdrop="blue"] .app,
+body[data-backdrop="green"] .titlebar,body[data-backdrop="blue"] .titlebar,
+body[data-backdrop="green"] .card,body[data-backdrop="blue"] .card,
+body[data-backdrop="green"] .bedwrap,body[data-backdrop="blue"] .bedwrap,
+body[data-backdrop="green"] .status,body[data-backdrop="blue"] .status,
+body[data-backdrop="green"] .transport,body[data-backdrop="blue"] .transport{
+  background:var(--chroma);border-color:transparent;box-shadow:none;
+  background-image:none;
+}
+body[data-backdrop="green"] .readout::before,body[data-backdrop="blue"] .readout::before{display:none}
+/* glows would bleed into the key colour and fringe when keyed out */
+body[data-backdrop="green"] .wk.on,body[data-backdrop="blue"] .wk.on,
+body[data-backdrop="green"] .bk.on,body[data-backdrop="blue"] .bk.on,
+body[data-backdrop="green"] .nametag,body[data-backdrop="blue"] .nametag,
+body[data-backdrop="green"] .big,body[data-backdrop="blue"] .big,
+body[data-backdrop="green"] .eyebrow .led,body[data-backdrop="blue"] .eyebrow .led{
+  box-shadow:none;text-shadow:none;
 }
