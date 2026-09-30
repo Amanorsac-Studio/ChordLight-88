@@ -212,28 +212,48 @@ ipcMain.on('window:control', (e, action) => {
  * Documents/Amanorsac Studio/Chordlight 88/Recordings (B48), and the name is
  * flattened to a plain filename here so nothing can escape it.
  * ------------------------------------------------------------------ */
+/* Every take gets a folder of its own, named like the take, and everything
+   made from that take — .mid, .mp4, .wav, .chordlight — lands in it:
+     Recordings/Chordlight take 2026-09-30 19.02.11/
+       Chordlight take 2026-09-30 19.02.11.mid
+       Chordlight take 2026-09-30 19.02.11.chordlight
+   Takes from before 1.3.1 sit loose in Recordings and still list. */
+const safeName = (name) => String(name || 'recording').replace(/[^\w .,()-]+/g, '_').slice(0, 120);
 ipcMain.handle('rec:save', async (_e, { name, bytes }) => {
-  const safe = String(name || 'recording').replace(/[^\w .,()-]+/g, '_').slice(0, 120);
-  await fs.promises.mkdir(settings.REC_DIR, { recursive: true });
-  const file = path.join(settings.REC_DIR, safe);
+  const safe = safeName(name);
+  const take = safe.replace(/\.[^.]+$/, '');
+  const dir = path.join(settings.REC_DIR, take);
+  await fs.promises.mkdir(dir, { recursive: true });
+  const file = path.join(dir, safe);
   await fs.promises.writeFile(file, Buffer.from(bytes));
   return file;
 });
 ipcMain.handle('rec:list', async () => {
+  const PLAYABLE = /\.(midi?|chordlight)$/i;
+  const out = [];
   try {
-    const names = await fs.promises.readdir(settings.REC_DIR);
-    const out = [];
-    for (const name of names) {
-      if (!/\.(midi?|chordlight)$/i.test(name)) continue;
-      const st = await fs.promises.stat(path.join(settings.REC_DIR, name));
-      out.push({ name, mtime: st.mtimeMs, size: st.size });
+    const top = await fs.promises.readdir(settings.REC_DIR, { withFileTypes: true });
+    for (const d of top) {
+      if (d.isDirectory()) {
+        let inner = [];
+        try { inner = await fs.promises.readdir(path.join(settings.REC_DIR, d.name)); } catch { inner = []; }
+        for (const name of inner) {
+          if (!PLAYABLE.test(name)) continue;
+          const st = await fs.promises.stat(path.join(settings.REC_DIR, d.name, name));
+          out.push({ name: d.name + '/' + name, take: d.name, mtime: st.mtimeMs, size: st.size });
+        }
+      } else if (PLAYABLE.test(d.name)) {
+        const st = await fs.promises.stat(path.join(settings.REC_DIR, d.name));
+        out.push({ name: d.name, take: d.name.replace(/\.[^.]+$/, ''), mtime: st.mtimeMs, size: st.size });
+      }
     }
-    return out.sort((a, b) => b.mtime - a.mtime);
-  } catch { return []; }
+  } catch { /* no folder yet */ }
+  return out.sort((a, b) => b.mtime - a.mtime);
 });
 ipcMain.handle('rec:read', async (_e, name) => {
-  const safe = path.basename(String(name));            // a name, never a path
-  const file = path.join(settings.REC_DIR, safe);
+  /* "take/file" or "file" — each part a bare name, never a path */
+  const parts = String(name).split(/[\\/]/).filter(Boolean).slice(-2).map((p) => path.basename(p));
+  const file = path.join(settings.REC_DIR, ...parts);
   const buf = await fs.promises.readFile(file);
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 });

@@ -2,6 +2,12 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.3.1 — September 2026
+
+- **Every take gets its own folder.** `Recordings/Chordlight take …/` holds
+  that take's .mid, .mp4, .wav and .chordlight together. Older takes stay
+  where they were and still show in the list.
+
 ## 1.3.0 — September 2026
 
 - **.chordlight files.** A take, its sound and its look in one file. Turn on

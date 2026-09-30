@@ -964,7 +964,8 @@
     recList.appendChild(head);
     items.forEach((r) => {
       const o = document.createElement('option');
-      o.value = r.name; o.textContent = r.name.replace(/\.(midi?|chordlight)$/i, '') + (/\.chordlight$/i.test(r.name) ? '  ♪' : '');
+      const leaf = r.name.split('/').pop();
+      o.value = r.name; o.textContent = leaf.replace(/\.(midi?|chordlight)$/i, '') + (/\.chordlight$/i.test(leaf) ? '  ♪' : '');
       recList.appendChild(o);
     });
   }
@@ -976,8 +977,8 @@
       let buffer;
       if (BRIDGE) buffer = await BRIDGE.readRecording(name);
       else buffer = sessionRecs.find((r) => r.name === name).bytes.buffer;
-      await loadAny(buffer, name, false);
-      toast('Cued  ' + name);
+      await loadAny(buffer, name.split('/').pop(), false);
+      toast('Cued  ' + name.split('/').pop());
     } catch (err) {
       toast('Could not open ' + name);
     }
