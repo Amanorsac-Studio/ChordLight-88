@@ -14,48 +14,58 @@ files:
 # The notices ship with the application (B31, B39), but WHERE differs by
 # platform. On macOS a plain file dropped into Contents/ is not sealed by the
 # code signature, and codesign refuses the whole bundle:
-#   "code object is not signed at all - In subcomponent: Contents/CHANGELOG.md"
+#   "code object is not signed at all — In subcomponent: Contents/CHANGELOG.md"
 # Contents/Resources is the signed home for non-code files, which is what
 # extraResources gives. On Windows they sit beside the executable.
 
 # ---------------------------------------------------------------- Windows
+# Installer & Packaging Standard: one file per platform (P1), named
+# <Product>-<version>-Windows.exe with the spaces removed (P28).
 win:
   target:
     - target: nsis
       arch: [x64]
-    - target: portable
-      arch: [x64]
-  icon: build/icon.png
-  artifactName: Chordlight-88-${version}-win-${arch}.${ext}
+  icon: build/icon.ico
+  artifactName: Chordlight88-${version}-Windows.${ext}
   publisherName: Amanorsac Studio
   extraFiles:
     - THIRD_PARTY_NOTICES.md
     - LICENSE
     - CHANGELOG.md
+    - README.txt
   # Signing: set WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD in CI.
   # Without them the build is unsigned and SmartScreen will warn on first run.
   signAndEditExecutable: true
 
+# The five-page assisted installer of §5: welcome, licence, components and
+# path, progress, done. perMachine puts it in Program Files (§3.1) — the one
+# permission prompt, explained on the welcome page (P22). Apps & Features
+# registration and a full uninstaller come with it (P23); Documents is never
+# touched on uninstall (P25).
 nsis:
   oneClick: false
-  perMachine: false
+  perMachine: true
   allowToChangeInstallationDirectory: true
   allowElevation: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Chordlight 88
   deleteAppDataOnUninstall: false
-  artifactName: Chordlight-88-${version}-Setup.${ext}
-
-portable:
-  artifactName: Chordlight-88-${version}-portable.${ext}
+  artifactName: Chordlight88-${version}-Windows.${ext}
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerSidebar: build/installerSidebar.bmp
+  uninstallerSidebar: build/installerSidebar.bmp
+  installerHeader: build/installerHeader.bmp
+  license: build/license.txt
+  include: build/installer.nsh
 
 # ---------------------------------------------------------------- macOS
+# macOS: a standalone-only product may ship a .dmg holding the .app and
+# nothing else (Packaging Standard §1 exception); one file, so no zip.
 mac:
   target:
     - target: dmg
-      arch: [universal]
-    - target: zip
       arch: [universal]
   icon: build/icon.png
   category: public.app-category.music
@@ -90,14 +100,14 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
   timestamp: http://timestamp.apple.com/ts01
-  artifactName: Chordlight-88-${version}-mac.${ext}
+  artifactName: Chordlight88-${version}-macOS.${ext}
   extendInfo:
     NSHumanReadableCopyright: © 2026 Amanorsac Studio
     LSMinimumSystemVersion: '11.0'
 
 dmg:
   title: Chordlight 88 ${version}
-  artifactName: Chordlight-88-${version}.${ext}
+  artifactName: Chordlight88-${version}-macOS.${ext}
 
 # ---------------------------------------------------------------- Linux (dev only)
 linux:

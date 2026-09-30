@@ -35,7 +35,9 @@ const PREF_DEFAULTS = {
   keyLight: 'solid',
   velocity: 'on',
   midiOut: 'None',
-  backdrop: 'theme'
+  backdrop: 'theme',
+  videoSound: 'system',
+  audioInput: ''
 };
 
 /* where the windows were */

@@ -202,7 +202,6 @@ jobs:
           path: |
             dist/*.exe
             dist/*.dmg
-            dist/*.zip
 
   # Publishing is its own job on purpose. Run it inside the matrix and the
   # Windows and macOS jobs race each other to create and write the same
@@ -216,6 +215,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4          # first: checkout cleans the workspace
+        with:
+          sparse-checkout: README.txt
+          sparse-checkout-cone-mode: false
+
       - name: Collect both platforms' installers
         uses: actions/download-artifact@v4
         with:
@@ -225,6 +229,7 @@ jobs:
       - name: What arrived
         run: ls -lR artifacts
 
+      # One file per platform (P1), and the one-page README beside them (P26).
       - name: Attach to the release
         uses: softprops/action-gh-release@v2
         with:
@@ -232,4 +237,4 @@ jobs:
           files: |
             artifacts/*.exe
             artifacts/*.dmg
-            artifacts/*.zip
+            README.txt

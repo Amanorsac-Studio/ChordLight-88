@@ -219,6 +219,24 @@ ipcMain.handle('rec:save', async (_e, { name, bytes }) => {
   await fs.promises.writeFile(file, Buffer.from(bytes));
   return file;
 });
+ipcMain.handle('rec:list', async () => {
+  try {
+    const names = await fs.promises.readdir(settings.REC_DIR);
+    const out = [];
+    for (const name of names) {
+      if (!/\.midi?$/i.test(name)) continue;
+      const st = await fs.promises.stat(path.join(settings.REC_DIR, name));
+      out.push({ name, mtime: st.mtimeMs, size: st.size });
+    }
+    return out.sort((a, b) => b.mtime - a.mtime);
+  } catch { return []; }
+});
+ipcMain.handle('rec:read', async (_e, name) => {
+  const safe = path.basename(String(name));            // a name, never a path
+  const file = path.join(settings.REC_DIR, safe);
+  const buf = await fs.promises.readFile(file);
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+});
 ipcMain.on('rec:open-folder', () => {
   fs.mkdirSync(settings.REC_DIR, { recursive: true });
   shell.openPath(settings.REC_DIR);
@@ -228,11 +246,19 @@ ipcMain.on('rec:open-folder', () => {
    nothing else — no picker, no other windows or screens. On Windows the
    system audio comes along, so a clip carries what Kontakt was playing. */
 function allowSelfCapture() {
+  // The only permission the renderer ever asks for is an audio input, for
+  // the sound in a video clip. Everything else stays denied.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    const ok = permission === 'media' && details && details.mediaTypes
+      && details.mediaTypes.every((t) => t === 'audio');
+    callback(!!ok);
+  });
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
     desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
-        const mine = sources.find((src) => mainWin && src.name === mainWin.getTitle()) || sources[0];
-        if (!mine) { callback({}); return; }
+        const id = mainWin && !mainWin.isDestroyed() ? mainWin.getMediaSourceId() : null;
+        const mine = sources.find((src) => src.id === id);
+        if (!mine) { callback({}); return; }      // never a screen, never another window
         callback({ video: mine, audio: process.platform === 'win32' ? 'loopback' : undefined });
       })
       .catch(() => callback({}));

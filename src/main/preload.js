@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('chordlight', {
   /* recordings land in Documents/Amanorsac Studio/Chordlight 88/Recordings */
   saveRecording: (name, bytes) => ipcRenderer.invoke('rec:save', { name, bytes }),
   openRecordings: () => ipcRenderer.send('rec:open-folder'),
+  listRecordings: () => ipcRenderer.invoke('rec:list'),
+  readRecording: (name) => ipcRenderer.invoke('rec:read', name),
 
   openExternal: (url) => ipcRenderer.send('open:external', url),
 

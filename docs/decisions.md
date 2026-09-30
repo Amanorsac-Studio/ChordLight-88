@@ -60,3 +60,64 @@ window positions and which pop-outs were open live in the application-support fo
 The standard separates user content from machine state (B48), and it means copying a
 preferences file to another machine does not drag that machine's window layout with
 it.
+
+## The keyboard is the floor of the window
+
+Chosen over a centred, padded card. The keys sit last in the layout, pushed to
+the bottom, the full window width at any size, and a pop-out opens at the
+card's measured screen rectangle. Reference: how ChordieApp behaves when
+maximised. The readouts above keep their fixed geometry for video.
+
+## Playback and recording stay dependency-free
+
+The MIDI file parser and writer are written in the renderer rather than taken
+from npm. The format is small, the app then ships no runtime dependency (B39,
+B41 stay trivial), and the same on()/off() path a keyboard uses drives
+playback, so chord naming and the ringing tier cannot diverge between live and
+file input. Format-0 SMF at 480 ppq / 120 bpm makes one second exactly 960
+ticks, so a recorded take keeps the timing that was played.
+
+## Sending MIDI is opt-in and file-only
+
+A MIDI output is used only to play a dropped file through a synth, and only
+when the user picks one in Setup. Live input is never echoed. Chordlight's
+whole pitch is that it never interferes with the controller a DAW holds.
+
+## The app captures only itself
+
+Video recording uses the display-media request handler in main to answer with
+this window and nothing else — no picker, no other windows, no screens. System
+audio rides along on Windows (loopback) because the point of a clip is what
+Kontakt was playing; macOS has no loopback without extra software, so it gets
+picture only. Output is WebM, not MP4: no encoder to license, every editor
+opens it, and the chroma backdrop covers the OBS route for anyone who needs
+MP4 straight out.
+
+## Recordings under Documents, named in main
+
+Takes and clips go to Documents/Amanorsac Studio/Chordlight 88/Recordings
+(B48). The renderer hands main bytes and a display name; main flattens the
+name to a filename and owns the folder, so no renderer path ever reaches disk.
+
+## Nothing is encrypted, because nothing needs to be
+
+The only encryption the standards call for is R7 of the License Integration
+Standard — the licence key and proof under DPAPI or Keychain. Chordlight ships
+unlicensed: there is no key, no proof and no device id, so there is nothing to
+protect and no encryption code to get wrong. Preferences and recordings are the
+user's own plain files. If the product becomes paid, R7 applies from the first
+licensed build.
+
+## The installer follows the Installer & Packaging Standard, as far as NSIS goes
+
+One file per platform, named `Chordlight88-<version>-Windows.exe` and
+`Chordlight88-<version>-macOS.dmg` (P1, P28; the dmg is the standalone-only
+exception in §1). Per-machine into Program Files\Amanorsac Studio\Chordlight 88
+(§3.1), with the one permission prompt explained on the welcome page (P22).
+Five pages: branded welcome, licence, path, progress, and a done page that
+lists exactly what went where (P15). README.txt, one page, beside the
+installer and installed with it (P26). What NSIS cannot give without custom
+plugins is the full near-black chrome of P18 — the wizard sidebar and header
+carry the brand, the page bodies stay Windows-grey. A fully skinned installer
+means moving to Inno Setup, which the standard names; that is a separate
+build task, not a config change.

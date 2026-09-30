@@ -175,8 +175,9 @@
       el.classList.toggle('root', on && n % 12 === rootPc && multi);
       const lbl = el.lastChild;
       if (on || rg) {
-        /* Fixed: every lit key takes the same shade, whatever the touch. */
-        const v = state.velocity === false ? 104 : (on ? vel.get(n) : ring.get(n));
+        /* Fixed: every lit key takes the same shade, whatever the touch — the
+           deep, saturated accent (the ramp's second stop), not the pale top. */
+        const v = state.velocity === false ? 43 : (on ? vel.get(n) : ring.get(n));
         const hi = velColor(Math.min(127, v + 26)), mid = velColor(v), lo = velColor(Math.max(14, v - 52));
         el.style.setProperty('--vhi', rgb(hi));
         el.style.setProperty('--vmid', rgb(mid));
@@ -460,6 +461,7 @@
   };
 
   function setSustain(b) {
+    if (pedalMode === 'ignore') b = false;   // the pedal is a spectator
     sustain = b;
     sustBadge.textContent = b ? 'Sustain held' : 'Sustain off';
     sustBadge.classList.toggle('warn', b);
@@ -762,19 +764,57 @@
     if (next !== undefined) seek(next);
   }
 
+  /* Loads bytes into the transport. `autoplay` false leaves it cued — a take
+     you just finished should not start blaring the moment it is saved. */
+  function loadBytes(buffer, name, autoplay = true) {
+    const parsed = parseSMF(buffer);
+    Object.assign(PLAY, parsed, { i: 0, pos: 0 });
+    tName.textContent = name;
+    tName.title = name;
+    tEl.classList.remove('empty', 'collapsed');
+    if (autoplay) play(); else seek(0);
+  }
+
   async function loadFile(file) {
     try {
-      const parsed = parseSMF(await file.arrayBuffer());
-      Object.assign(PLAY, parsed, { i: 0, pos: 0 });
-      tName.textContent = file.name;
-      tName.title = file.name;
-      tEl.classList.remove('empty', 'collapsed');
-      play();
+      loadBytes(await file.arrayBuffer(), file.name, true);
     } catch (err) {
       tName.textContent = 'Could not read ' + file.name;
       tName.title = String(err.message || err);
     }
   }
+
+  const recList = $('reclist');
+  const sessionRecs = [];                       // browser build: what was saved this session
+  async function refreshRecList() {
+    let items = [];
+    if (BRIDGE) { try { items = await BRIDGE.listRecordings(); } catch { items = []; } }
+    else items = sessionRecs.map((r) => ({ name: r.name }));
+    recList.innerHTML = '';
+    const head = document.createElement('option');
+    head.value = '';
+    head.textContent = items.length ? `Recordings (${items.length})…` : 'Recordings…';
+    recList.appendChild(head);
+    items.forEach((r) => {
+      const o = document.createElement('option');
+      o.value = r.name; o.textContent = r.name.replace(/\.midi?$/i, '');
+      recList.appendChild(o);
+    });
+  }
+  recList.addEventListener('change', async () => {
+    const name = recList.value;
+    recList.value = '';
+    if (!name) return;
+    try {
+      let buffer;
+      if (BRIDGE) buffer = await BRIDGE.readRecording(name);
+      else buffer = sessionRecs.find((r) => r.name === name).bytes.buffer;
+      loadBytes(buffer, name, false);
+      toast('Cued  ' + name);
+    } catch (err) {
+      toast('Could not open ' + name);
+    }
+  });
 
   tPlay.addEventListener('click', () => (PLAY.playing ? pause() : play()));
   $('tprev').addEventListener('click', () => step(-1));
@@ -923,12 +963,18 @@
     recBtn.textContent = '● Rec';
     recBtn.title = 'Record the MIDI you play to a .mid file';
     if (!REC.events.length) { toast('Nothing was played'); return; }
-    saveBytes(`Chordlight take ${stamp()}.mid`, writeSMF(REC.events), 'audio/midi');
+    keepRecording(`Chordlight take ${stamp()}.mid`, writeSMF(REC.events));
+  }
+  async function keepRecording(name, bytes) {
+    await saveBytes(name, bytes, 'audio/midi');
+    sessionRecs.unshift({ name, bytes });
+    refreshRecList();
+    try { loadBytes(bytes.buffer.slice(0), name, false); } catch { /* unplayable take: leave the transport as it was */ }
   }
   recBtn.addEventListener('click', () => (REC.on ? stopRec() : startRec()));
   keepBtn.addEventListener('click', () => {
     if (!CAP.buf.length) { toast('Nothing in the last five minutes'); return; }
-    saveBytes(`Chordlight keep ${stamp()}.mid`, writeSMF(CAP.buf), 'audio/midi');
+    keepRecording(`Chordlight keep ${stamp()}.mid`, writeSMF(CAP.buf));
   });
 
   /* ================= video ================= */
@@ -938,26 +984,100 @@
     const s = Math.floor(performance.now() / 1000 - VID.start);
     vidBtn.textContent = `■ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
-  async function startVideo() {
-    let stream;
-    try {
-      try { stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 }, audio: true }); }
-      catch { stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 } }); }
-    } catch (err) {
-      toast('Could not start video — ' + (err.message || err));
-      return;
+  const soundSel = $('videosound'), audioInSel = $('audioin');
+  let videoSound = 'system', audioInput = '';
+
+  /* Audio inputs only get names once the page has been allowed to use one,
+     so the list is (re)built after any successful capture too. */
+  async function refreshInputs() {
+    let devs = [];
+    try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); }
+    catch { devs = []; }
+    const keep = audioInSel.value;
+    audioInSel.innerHTML = '';
+    const def = document.createElement('option');
+    def.value = ''; def.textContent = 'Default input';
+    audioInSel.appendChild(def);
+    devs.forEach((d, i) => {
+      const o = document.createElement('option');
+      o.value = d.deviceId;
+      o.textContent = d.label || `Input ${i + 1}`;
+      audioInSel.appendChild(o);
+    });
+    audioInSel.value = [keep, audioInput].find((v) => v && [...audioInSel.options].some((o) => o.value === v)) || '';
+  }
+  soundSel.addEventListener('change', () => { videoSound = soundSel.value; store({ videoSound }); });
+  audioInSel.addEventListener('change', () => { audioInput = audioInSel.value; store({ audioInput }); });
+  if (navigator.mediaDevices) {
+    refreshInputs();
+    navigator.mediaDevices.addEventListener('devicechange', refreshInputs);
+  }
+
+  /* One video track from the window, and an audio track built to order:
+     the system sound the window capture carries (Windows), an input device
+     (a keyboard through an interface, a mic, BlackHole on a Mac), or both
+     mixed through an AudioContext. */
+  async function buildStream() {
+    const wantSystem = videoSound === 'system' || videoSound === 'both';
+    const wantInput  = videoSound === 'input'  || videoSound === 'both';
+    let display;
+    try { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 }, audio: wantSystem }); }
+    catch { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 } }); }
+
+    const tracks = [display.getVideoTracks()[0]];
+    const sysTrack = wantSystem ? display.getAudioTracks()[0] : null;
+    let inStream = null;
+    if (wantInput) {
+      try {
+        inStream = await navigator.mediaDevices.getUserMedia({
+          audio: audioInput ? { deviceId: { exact: audioInput }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+                            : { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        });
+        refreshInputs();
+      } catch (err) {
+        toast('No audio input — ' + (err.message || err));
+      }
     }
-    const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp9', 'video/webm']
+    const inTrack = inStream ? inStream.getAudioTracks()[0] : null;
+    let ctx = null;
+    if (sysTrack && inTrack) {
+      ctx = new AudioContext();
+      const dest = ctx.createMediaStreamDestination();
+      ctx.createMediaStreamSource(new MediaStream([sysTrack])).connect(dest);
+      ctx.createMediaStreamSource(new MediaStream([inTrack])).connect(dest);
+      tracks.push(dest.stream.getAudioTracks()[0]);
+    } else if (sysTrack || inTrack) {
+      tracks.push(sysTrack || inTrack);
+    }
+    if (!sysTrack && wantSystem && !inTrack) toast('No system sound on this machine — picture only');
+    const stream = new MediaStream(tracks);
+    const stopAll = () => {
+      display.getTracks().forEach((t) => t.stop());
+      if (inStream) inStream.getTracks().forEach((t) => t.stop());
+      if (ctx) ctx.close();
+    };
+    return { stream, stopAll, ended: display.getVideoTracks()[0] };
+  }
+
+  async function startVideo() {
+    let built;
+    try { built = await buildStream(); }
+    catch (err) { toast('Could not start video — ' + (err.message || err)); return; }
+    const { stream, stopAll, ended } = built;
+    const hasAudio = stream.getAudioTracks().length > 0;
+    const mime = (hasAudio
+      ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
       .find((m) => MediaRecorder.isTypeSupported(m)) || '';
     VID.chunks = [];
-    VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 14e6 });
+    VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 14e6, audioBitsPerSecond: 192e3 });
     VID.rec.ondataavailable = (e) => { if (e.data.size) VID.chunks.push(e.data); };
     VID.rec.onstop = async () => {
-      stream.getTracks().forEach((tr) => tr.stop());
+      stopAll();
       const blob = new Blob(VID.chunks, { type: 'video/webm' });
       saveBytes(`Chordlight video ${stamp()}.webm`, new Uint8Array(await blob.arrayBuffer()), 'video/webm');
     };
-    stream.getVideoTracks()[0].addEventListener('ended', () => { if (VID.rec && VID.rec.state !== 'inactive') stopVideo(); });
+    ended.addEventListener('ended', () => { if (VID.rec && VID.rec.state !== 'inactive') stopVideo(); });
     VID.rec.start(1000);
     VID.start = performance.now() / 1000;
     vidBtn.setAttribute('aria-pressed', 'true');
@@ -1149,6 +1269,7 @@
   pedalSel.addEventListener('change', () => {
     pedalMode = pedalSel.value;
     if (pedalMode === 'all') ringing.clear();
+    if (pedalMode === 'ignore') setSustain(false);
     store({ pedalMode });
     paint();
   });
@@ -1179,6 +1300,11 @@
     if (settingsCache.spelling) spellsel.value = settingsCache.spelling;
     if (settingsCache.midiChannel) chsel.value = settingsCache.midiChannel;
     if (settingsCache.keySize) { ksize.value = settingsCache.keySize; bed.style.setProperty('--kh', settingsCache.keySize + 'px'); }
+    if (['none', 'system', 'input', 'both'].includes(settingsCache.videoSound)) {
+      videoSound = settingsCache.videoSound; soundSel.value = videoSound;
+    }
+    if (typeof settingsCache.audioInput === 'string') { audioInput = settingsCache.audioInput; refreshInputs(); }
+    refreshRecList();
     if (['theme', 'green', 'blue'].includes(settingsCache.backdrop)) {
       backdrop = settingsCache.backdrop;
       backdropSel.value = backdrop;
@@ -1192,7 +1318,7 @@
       keyLight = settingsCache.keyLight;
       lightSel.value = keyLight;
     }
-    if (settingsCache.pedalMode === 'all' || settingsCache.pedalMode === 'chord') {
+    if (['all', 'chord', 'ignore'].includes(settingsCache.pedalMode)) {
       pedalMode = settingsCache.pedalMode;
       pedalSel.value = pedalMode;
     }

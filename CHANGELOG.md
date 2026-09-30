@@ -2,6 +2,25 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.1.1 — September 2026
+
+- **Pedal › Ignore the pedal** — the sustain pedal does nothing; notes end when
+  your fingers lift.
+- **Velocity › Fixed now lights keys in the deep accent colour**, not the pale
+  top of the ramp.
+- **Your recordings are in the transport.** A Recordings list reads the folder,
+  and a take you just finished is cued, ready to play.
+- **Video records only the Chordlight window** — never the screen or another
+  window.
+- **Video sound** — Setup › Video sound: System (what is playing), an Input
+  device (a keyboard through your interface, a mic, or BlackHole on a Mac), or
+  both mixed. Setup › Audio input picks the device.
+- **The installer follows the Installer & Packaging Standard:** one file per
+  platform, named `Chordlight88-1.1.1-Windows.exe` and
+  `Chordlight88-1.1.1-macOS.dmg`; installs to Program Files\Amanorsac Studio;
+  branded welcome, licence, path, progress and done pages; a one-page
+  README.txt beside it. The portable exe and the macOS zip are gone.
+
 ## 1.1.0 — September 2026
 
 - **The keyboard is the floor of the window.** It sits at the bottom, edge to

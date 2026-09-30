@@ -103,6 +103,19 @@
       </select>
     </div>
     <div class="grp">
+      <label class="fld" for="videosound">Video sound</label>
+      <select id="videosound">
+        <option value="none">None</option>
+        <option value="system">System — what is playing</option>
+        <option value="input">Input device</option>
+        <option value="both">System + input</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label class="fld" for="audioin">Audio input</label>
+      <select id="audioin"><option value="">Default</option></select>
+    </div>
+    <div class="grp">
       <label class="fld" for="backdrop">Backdrop</label>
       <select id="backdrop">
         <option value="theme">Theme</option>
@@ -115,6 +128,7 @@
       <select id="pedal">
         <option value="chord">Current chord</option>
         <option value="all">Everything sounding</option>
+        <option value="ignore">Ignore the pedal</option>
       </select>
     </div>
     <div class="grp">
@@ -146,6 +160,7 @@
     <button class="btn icon" type="button" id="tcollapse" title="Hide the controls" aria-label="Hide the controls">▾</button>
     <button class="btn" type="button" id="openmidi" title="Open a MIDI file and play it back — or drop one anywhere on the window">Open MIDI file…</button>
     <input type="file" id="midifile" accept=".mid,.midi,audio/midi" hidden>
+    <select id="reclist" title="Your recordings" aria-label="Recordings"><option value="">Recordings…</option></select>
     <div class="tname" id="tname">Drop a .mid anywhere, or open one</div>
     <div class="tbody" id="tbody">
       <button class="btn icon" type="button" id="tprev" title="Previous chord" aria-label="Previous chord">⏮</button>

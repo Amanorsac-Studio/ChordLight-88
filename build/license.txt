@@ -1,0 +1,17 @@
+Copyright © 2026 Amanorsac Studio (Stephen Amanor Sackey).
+All rights reserved.
+
+This software and its source code are proprietary and confidential. No licence,
+right or interest is granted to copy, modify, distribute, sublicense, sell or
+create derivative works from any part of it except under a separate written
+agreement with Amanorsac Studio.
+
+Use of the compiled application is governed by the End User Licence Agreement
+published at https://amanorsac.studio/legal.
+
+Third-party components shipped with the application are listed, with their own
+licences, in THIRD_PARTY_NOTICES.md.
+
+
+The current terms are published at https://amanorsac.studio/legal
+Privacy: https://amanorsac.studio/privacy
