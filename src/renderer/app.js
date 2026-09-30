@@ -985,12 +985,16 @@
     const s = Math.floor(performance.now() / 1000 - REC.start);
     recBtn.textContent = `■ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
-  function startRec() {
+  /* `base` is the name shared with a video or WAV started at the same
+     moment, so the three files sort together in the folder. */
+  function startRec(base, withWav) {
     REC.on = true; REC.start = performance.now() / 1000; REC.events = [];
+    REC.base = base || `Chordlight take ${stamp()}`;
     recBtn.setAttribute('aria-pressed', 'true');
     recBtn.title = 'Stop and save the take';
     recFace();
     REC.timer = setInterval(recFace, 500);
+    if (withWav) startWav(REC.base).catch((err) => toast('No WAV — ' + (err.message || err)));
   }
   function stopRec() {
     REC.on = false;
@@ -998,8 +1002,9 @@
     recBtn.setAttribute('aria-pressed', 'false');
     recBtn.textContent = '● Rec';
     recBtn.title = 'Record the MIDI you play to a .mid file';
+    if (WAV.on && WAV.owner === 'rec') stopWav();
     if (!REC.events.length) { toast('Nothing was played'); return; }
-    keepRecording(`Chordlight take ${stamp()}.mid`, writeSMF(REC.events));
+    keepRecording(REC.base + '.mid', writeSMF(REC.events));
   }
   async function keepRecording(name, bytes) {
     await saveBytes(name, bytes, 'audio/midi');
@@ -1007,7 +1012,7 @@
     refreshRecList();
     try { loadBytes(bytes.buffer.slice(0), name, false); } catch { /* unplayable take: leave the transport as it was */ }
   }
-  recBtn.addEventListener('click', () => (REC.on ? stopRec() : startRec()));
+  recBtn.addEventListener('click', () => (REC.on ? stopRec() : startRec(null, alsoWav)));
   keepBtn.addEventListener('click', () => {
     if (!CAP.buf.length) { toast('Nothing in the last five minutes'); return; }
     keepRecording(`Chordlight keep ${stamp()}.mid`, writeSMF(CAP.buf));
@@ -1022,7 +1027,7 @@
   }
   const soundSel = $('videosound'), audioInSel = $('audioin'), vocalInSel = $('vocalin'),
         duckEl = $('duck'), duckV = $('duckv'), offsetEl = $('aoffset'), offsetV = $('aoffsetv'), qualSel = $('vquality');
-  let videoSound = 'system', audioInput = '', vocalInput = '', duck = 9, audioOffset = 0, videoQuality = 'best';
+  let videoSound = 'system', audioInput = '', vocalInput = '', duck = 9, audioOffset = 0, videoQuality = 'good';
 
   /* Audio inputs only get names once the page has been allowed to use one,
      so both lists are (re)built after any successful capture too. */
@@ -1064,10 +1069,24 @@
      the vocal goes straight in; the whole mix can be delayed a few ms so it
      lines up with the picture. */
   const QUALITY = {
-    best:  { fps: 60, vbps: 20e6, abps: 256e3 },
-    good:  { fps: 30, vbps: 8e6,  abps: 192e3 },
-    small: { fps: 30, vbps: 3e6,  abps: 128e3 }
+    best:  { fps: 60, vbps: 16e6, abps: 256e3 },
+    good:  { fps: 30, vbps: 8e6,  abps: 256e3 },
+    small: { fps: 30, vbps: 4e6,  abps: 192e3 }
   };
+  /* MP4 (H.264 + AAC) when this machine's recorder can write it — it plays
+     everywhere; WebM (VP9 + Opus) otherwise. Only a named H.264 + AAC pair
+     counts: a bare "video/mp4" would put VP9 in an MP4, which editors like
+     even less than WebM. Decided once, shown in Advanced, used for every
+     clip. */
+  const CONTAINERS = [
+    { mime: 'video/mp4;codecs=avc1.640028,mp4a.40.2', ext: 'mp4', label: 'MP4 · H.264 + AAC' },
+    { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext: 'mp4', label: 'MP4 · H.264 + AAC' },
+    { mime: 'video/webm;codecs=vp9,opus', ext: 'webm', label: 'WebM · VP9 + Opus' },
+    { mime: 'video/webm;codecs=vp8,opus', ext: 'webm', label: 'WebM · VP8 + Opus' },
+    { mime: 'video/webm', ext: 'webm', label: 'WebM' }
+  ];
+  const CONTAINER = (typeof MediaRecorder !== 'undefined' && CONTAINERS.find((c) => MediaRecorder.isTypeSupported(c.mime)))
+    || CONTAINERS[CONTAINERS.length - 1];
   const keyGainEl = $('keygain'), vocGainEl = $('vocgain'), keyGainV = $('keygainv'), vocGainV = $('vocgainv'),
         keyMeter = $('keymeter'), vocMeter = $('vocmeter'), duckBadge = $('duckbadge'), mixNote = $('mixnote');
   let keyGainDb = 0, vocGainDb = 0;
@@ -1102,6 +1121,68 @@
 
   const MIX = { ctx: null, keyGain: null, vocGain: null, bed: null, delay: null, dest: null,
                 keyAn: null, vocAn: null, streams: [], raf: 0, recording: false, ducked: false };
+
+  /* ---------- WAV: the mix, uncompressed ----------
+     24-bit, 48 kHz, stereo, tapped after the delay so it is exactly what the
+     clip hears. Samples are packed to 24-bit as they arrive (288 KB/s) rather
+     than kept as floats. A ScriptProcessor is old but needs no extra file
+     under the CSP; 4096 frames is 85 ms of latency that does not matter to
+     a file. */
+  const WAV = { on: false, owner: '', tap: null, chunks: [], frames: 0, base: '' };
+  const alsoMidiBtn = $('alsomidi'), alsoWavBtn = $('alsowav'), fmtBadge = $('fmtbadge');
+  let alsoMidi = false, alsoWav = false;
+  const markAlso = () => {
+    alsoMidiBtn.setAttribute('aria-pressed', String(alsoMidi)); alsoMidiBtn.classList.toggle('on', alsoMidi);
+    alsoWavBtn.setAttribute('aria-pressed', String(alsoWav)); alsoWavBtn.classList.toggle('on', alsoWav);
+  };
+  alsoMidiBtn.addEventListener('click', () => { alsoMidi = !alsoMidi; markAlso(); store({ alsoMidi }); });
+  alsoWavBtn.addEventListener('click', () => { alsoWav = !alsoWav; markAlso(); store({ alsoWav }); });
+
+  async function startWav(base) {
+    if (WAV.on) return;
+    if (!MIX.ctx) await buildMix(null);          // Rec without Advanced open: inputs only
+    if (!MIX.ctx) throw new Error('no audio graph');
+    const ctx = MIX.ctx;
+    const tap = ctx.createScriptProcessor(4096, 2, 2);
+    WAV.chunks = []; WAV.frames = 0; WAV.base = base; WAV.on = true; WAV.owner = MIX.recording ? 'video' : 'rec';
+    tap.onaudioprocess = (e) => {
+      if (!WAV.on) return;
+      const L = e.inputBuffer.getChannelData(0), R = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : L;
+      const out = new Uint8Array(L.length * 6);
+      for (let i = 0, o = 0; i < L.length; i++) {
+        for (const v of [L[i], R[i]]) {
+          const x = Math.max(-1, Math.min(1, v));
+          const n = Math.round(x < 0 ? x * 8388608 : x * 8388607);
+          out[o++] = n & 0xff; out[o++] = (n >> 8) & 0xff; out[o++] = (n >> 16) & 0xff;
+        }
+      }
+      WAV.chunks.push(out); WAV.frames += L.length;
+    };
+    MIX.delay.connect(tap);
+    const mute = ctx.createGain(); mute.gain.value = 0;   // a ScriptProcessor only runs when routed somewhere
+    tap.connect(mute); mute.connect(ctx.destination);
+    WAV.tap = tap; WAV.mute = mute;
+  }
+  function stopWav() {
+    if (!WAV.on) return;
+    WAV.on = false;
+    try { WAV.tap.disconnect(); WAV.mute.disconnect(); } catch { /* graph already closed */ }
+    const rate = 48000, bits = 24, ch = 2, dataLen = WAV.frames * ch * bits / 8;
+    const head = new DataView(new ArrayBuffer(44));
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) head.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, 'RIFF'); head.setUint32(4, 36 + dataLen, true); str(8, 'WAVE');
+    str(12, 'fmt '); head.setUint32(16, 16, true); head.setUint16(20, 1, true); head.setUint16(22, ch, true);
+    head.setUint32(24, rate, true); head.setUint32(28, rate * ch * bits / 8, true);
+    head.setUint16(32, ch * bits / 8, true); head.setUint16(34, bits, true);
+    str(36, 'data'); head.setUint32(40, dataLen, true);
+    const file = new Uint8Array(44 + dataLen);
+    file.set(new Uint8Array(head.buffer), 0);
+    let o = 44; for (const c of WAV.chunks) { file.set(c, o); o += c.length; }
+    WAV.chunks = [];
+    const wasOwner = WAV.owner; WAV.owner = '';
+    if (WAV.frames > rate / 4) saveBytes(WAV.base + '.wav', file, 'audio/wav');
+    if (wasOwner === 'rec' && !MIX.recording) monitorInputs();   // give the graph back to the meters, or close it
+  }
   const rms = (an, buf) => {
     an.getFloatTimeDomainData(buf);
     let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
@@ -1171,7 +1252,7 @@
   /* Meters run while Advanced is open and no clip is recording; a clip
      owns the graph for its duration. */
   function monitorInputs() {
-    if (MIX.recording) return;
+    if (MIX.recording || WAV.on) return;
     if (advOpen && !setup.hidden) { buildMix(null).catch(() => {}); mixNote.textContent = 'Meters live'; }
     else { tearDownMix(); mixNote.textContent = 'Meters run while Advanced is open'; }
   }
@@ -1252,19 +1333,23 @@
     catch (err) { MIX.recording = false; monitorInputs(); toast('Could not start video — ' + (err.message || err)); return; }
     const { stream, stopAll, ended } = built;
     const hasAudio = stream.getAudioTracks().length > 0;
-    const mime = (hasAudio
-      ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
-      : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
-      .find((m) => MediaRecorder.isTypeSupported(m)) || '';
+    /* a clip with no sound must not ask for an audio codec */
+    const mime = hasAudio ? CONTAINER.mime : CONTAINER.mime.replace(/,(mp4a\.40\.2|opus)/, '');
     VID.chunks = [];
-    const Q = QUALITY[videoQuality] || QUALITY.best;
+    const Q = QUALITY[videoQuality] || QUALITY.good;
+    const base = `Chordlight video ${stamp()}`;
     VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Q.vbps, audioBitsPerSecond: Q.abps });
     VID.rec.ondataavailable = (e) => { if (e.data.size) VID.chunks.push(e.data); };
     VID.rec.onstop = async () => {
+      if (WAV.on && WAV.owner === 'video') stopWav();
+      if (REC.on && REC.base === base) stopRec();
       stopAll();
-      const blob = new Blob(VID.chunks, { type: 'video/webm' });
-      saveBytes(`Chordlight video ${stamp()}.webm`, new Uint8Array(await blob.arrayBuffer()), 'video/webm');
+      const blob = new Blob(VID.chunks, { type: CONTAINER.mime.split(';')[0] });
+      saveBytes(`${base}.${CONTAINER.ext}`, new Uint8Array(await blob.arrayBuffer()), CONTAINER.mime.split(';')[0]);
     };
+    /* the same take, on the side: what you played, and the sound uncompressed */
+    if (alsoMidi && !REC.on) startRec(base, false);
+    if (alsoWav) startWav(base).catch((err) => toast('No WAV — ' + (err.message || err)));
     ended.addEventListener('ended', () => { if (VID.rec && VID.rec.state !== 'inactive') stopVideo(); });
     VID.rec.start(1000);
     VID.start = performance.now() / 1000;
@@ -1544,7 +1629,11 @@
     duckEl.value = duck; duckFace();
     if (Number.isFinite(+settingsCache.audioOffset)) audioOffset = Math.max(0, Math.min(300, +settingsCache.audioOffset));
     offsetEl.value = audioOffset; offsetFace();
-    if (QUALITY[settingsCache.videoQuality]) { videoQuality = settingsCache.videoQuality; qualSel.value = videoQuality; }
+    if (QUALITY[settingsCache.videoQuality]) videoQuality = settingsCache.videoQuality;
+    qualSel.value = videoQuality;
+    alsoMidi = settingsCache.alsoMidi === true; alsoWav = settingsCache.alsoWav === true; markAlso();
+    fmtBadge.textContent = CONTAINER.label;
+    fmtBadge.title = CONTAINER.ext === 'mp4' ? 'This machine records straight to MP4' : 'This machine cannot write MP4 — clips are WebM';
     refreshRecList();
     backdrop = settingsCache.backdrop === 'picture' ? 'picture' : 'theme';   // chroma from 1.1 falls back to the theme
     backdropSel.value = backdrop;

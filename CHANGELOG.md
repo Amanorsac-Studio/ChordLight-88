@@ -2,6 +2,22 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.2.2 — September 2026
+
+- **Clips are MP4** (H.264 + AAC) on any machine whose recorder can write
+  them — which is Windows 10/11 and macOS as a rule — and WebM only where it
+  cannot. Advanced › Video shows which one this machine gives you.
+- **Quality, re-tuned for the best look at the smallest size:** Best is
+  60 fps at 16 Mb/s, Good (the default) 30 fps at 8 Mb/s, Small 30 fps at
+  4 Mb/s. Audio is 48 kHz at 256 kb/s in all but Small, with echo-cancel,
+  noise suppression and auto-gain off — what your interface sends is what
+  lands in the file.
+- **Advanced › Also save — + MIDI, + WAV.** With + MIDI on, a video also
+  saves a .mid of what you played. With + WAV on, a video *and* a Rec take
+  also save the sound as a 24-bit 48 kHz WAV — the exact mix the clip hears,
+  uncompressed. All three files share one name so they sit together in
+  Recordings.
+
 ## 1.2.1 — September 2026
 
 - **Keys light instantly.** The solid key colour was fading in over 80 ms

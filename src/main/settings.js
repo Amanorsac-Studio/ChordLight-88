@@ -45,7 +45,11 @@ const PREF_DEFAULTS = {
   vocalInput: '',
   duck: 9,
   audioOffset: 0,
-  videoQuality: 'best',
+  videoQuality: 'good',
+  alsoMidi: false,
+  alsoWav: false,
+  keyGain: 0,
+  vocGain: 0,
   advanced: false
 };
 

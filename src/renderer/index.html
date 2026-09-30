@@ -175,11 +175,19 @@
       <div class="grp">
         <label class="fld" for="vquality">Quality</label>
         <select id="vquality">
-          <option value="best">Best — 60 fps · 20 Mb/s</option>
+          <option value="best">Best — 60 fps · 16 Mb/s</option>
           <option value="good">Good — 30 fps · 8 Mb/s</option>
-          <option value="small">Small — 30 fps · 3 Mb/s</option>
+          <option value="small">Small — 30 fps · 4 Mb/s</option>
         </select>
       </div>
+      <div class="grp">
+        <label class="fld">Also save</label>
+        <div class="recgroup">
+          <button class="btn" type="button" id="alsomidi" aria-pressed="false" title="While Video records, also save what you play as a .mid — same name, same folder">+ MIDI</button>
+          <button class="btn" type="button" id="alsowav" aria-pressed="false" title="With Video and with Rec, also save the sound as a 24-bit 48 kHz WAV — same name, same folder">+ WAV</button>
+        </div>
+      </div>
+      <span class="badge quiet" id="fmtbadge">Format…</span>
     </div>
     <div class="row">
       <div class="tag"><span class="led"></span>Look</div>
