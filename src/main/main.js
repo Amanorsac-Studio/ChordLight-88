@@ -224,7 +224,7 @@ ipcMain.handle('rec:list', async () => {
     const names = await fs.promises.readdir(settings.REC_DIR);
     const out = [];
     for (const name of names) {
-      if (!/\.midi?$/i.test(name)) continue;
+      if (!/\.(midi?|chordlight)$/i.test(name)) continue;
       const st = await fs.promises.stat(path.join(settings.REC_DIR, name));
       out.push({ name, mtime: st.mtimeMs, size: st.size });
     }
@@ -358,18 +358,48 @@ ipcMain.on('open:external', (_e, url) => {
  * Lifecycle
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Files the OS asks us to open — a double-clicked .chordlight or .mid.
+ *
+ * Windows/Linux hand the path on argv (first launch) or through
+ * 'second-instance' (already running); macOS sends 'open-file', possibly
+ * before the window exists. Either way the path waits here until the
+ * renderer says it is ready, then goes over as bytes — the renderer never
+ * touches a path.
+ * ------------------------------------------------------------------ */
+const OPENABLE = /\.(chordlight|midi?)$/i;
+let pendingOpen = null;
+let rendererReady = false;
+function fileFromArgv(argv) {
+  return argv.slice(1).find((a) => OPENABLE.test(a) && !a.startsWith('-')) || null;
+}
+function openFile(file) {
+  if (!file) return;
+  pendingOpen = file;
+  if (!rendererReady) return;
+  fs.promises.readFile(file).then((buf) => {
+    pendingOpen = null;
+    sendToMain('file:open', { name: path.basename(file), bytes: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) });
+    if (mainWin) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.focus(); }
+  }).catch(() => { pendingOpen = null; });
+}
+ipcMain.on('renderer:ready', () => { rendererReady = true; if (pendingOpen) openFile(pendingOpen); });
+app.on('open-file', (e, file) => { e.preventDefault(); openFile(file); });
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
     if (mainWin) {
       if (mainWin.isMinimized()) mainWin.restore();
       mainWin.focus();
     }
+    openFile(fileFromArgv(argv));
   });
 
   app.whenReady().then(() => {
     allowSelfCapture();
+    if (!isMac) openFile(fileFromArgv(process.argv));
     createMainWindow();
 
     // Re-open the pop-outs that were open when the app last closed.

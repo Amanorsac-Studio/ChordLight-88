@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:;">
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src blob:;">
 <title>Chordlight 88</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
@@ -185,6 +185,7 @@
         <div class="recgroup">
           <button class="btn" type="button" id="alsomidi" aria-pressed="false" title="While Video records, also save what you play as a .mid — same name, same folder">+ MIDI</button>
           <button class="btn" type="button" id="alsowav" aria-pressed="false" title="With Video and with Rec, also save the sound as a 24-bit 48 kHz WAV — same name, same folder">+ WAV</button>
+          <button class="btn" type="button" id="alsopack" aria-pressed="false" title="With Video and with Rec, also save a .chordlight — the take, its sound and its look in one file anyone with Chordlight can open and play">+ .chordlight</button>
         </div>
       </div>
       <span class="badge quiet" id="fmtbadge">Format…</span>
@@ -225,10 +226,10 @@
 
   <div class="transport raised empty" id="transport">
     <button class="btn icon" type="button" id="tcollapse" title="Hide the controls" aria-label="Hide the controls">▾</button>
-    <button class="btn" type="button" id="openmidi" title="Open a MIDI file and play it back — or drop one anywhere on the window">Open MIDI file…</button>
-    <input type="file" id="midifile" accept=".mid,.midi,audio/midi" hidden>
+    <button class="btn" type="button" id="openmidi" title="Open a .mid or a .chordlight and play it back — or drop one anywhere on the window">Open…</button>
+    <input type="file" id="midifile" accept=".mid,.midi,.chordlight,audio/midi" hidden>
     <select id="reclist" title="Your recordings" aria-label="Recordings"><option value="">Recordings…</option></select>
-    <div class="tname" id="tname">Drop a .mid anywhere, or open one</div>
+    <div class="tname" id="tname">Drop a .mid or .chordlight anywhere, or open one</div>
     <div class="tbody" id="tbody">
       <button class="btn icon" type="button" id="tprev" title="Previous chord" aria-label="Previous chord">⏮</button>
       <button class="btn icon" type="button" id="tplay" title="Play" aria-label="Play">▶</button>

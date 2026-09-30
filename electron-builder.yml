@@ -11,6 +11,17 @@ files:
   - package.json
   - '!**/*.map'
 
+# A .chordlight is a take with its sound and its look; double-clicking one
+# opens it in Chordlight. .mid is deliberately NOT claimed — that belongs to
+# whatever DAW the player already uses; Open… and drag-and-drop take a .mid.
+# The icon is the app's own (the default when none is named).
+fileAssociations:
+  - ext: chordlight
+    name: Chordlight take
+    description: Chordlight 88 take — MIDI, sound and look
+    role: Viewer
+    mimeType: application/vnd.amanorsac.chordlight
+
 # The notices ship with the application (B31, B39), but WHERE differs by
 # platform. On macOS a plain file dropped into Contents/ is not sealed by the
 # code signature, and codesign refuses the whole bundle:

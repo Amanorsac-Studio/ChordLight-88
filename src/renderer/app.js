@@ -514,10 +514,13 @@
     const el = e.target.closest('.wk,.bk'); if (!el) return;
     const r = el.getBoundingClientRect();
     const v = Math.round(38 + ((e.clientY - r.top) / r.height) * 88);
-    mouseNote = +el.dataset.n; on(mouseNote, Math.min(127, Math.max(10, v)));
+    mouseNote = +el.dataset.n;
+    const vel = Math.min(127, Math.max(10, v));
+    capture([0x90, mouseNote, vel]);
+    on(mouseNote, vel);
     bed.setPointerCapture(e.pointerId);
   });
-  const release = () => { if (mouseNote !== null) { off(mouseNote); mouseNote = null; } };
+  const release = () => { if (mouseNote !== null) { capture([0x80, mouseNote, 0]); off(mouseNote); mouseNote = null; } };
   bed.addEventListener('pointerup', release);
   bed.addEventListener('pointercancel', release);
 
@@ -528,17 +531,17 @@
     if (e.repeat) return;
     const t = e.target.tagName;
     if (t === 'SELECT' || t === 'INPUT' || t === 'BUTTON') return;
-    if (e.key === ' ') { e.preventDefault(); setSustain(true); return; }
+    if (e.key === ' ') { e.preventDefault(); capture([0xB0, 64, 127]); setSustain(true); return; }
     const l = e.key.toLowerCase();
     if (l === 'z') { oct = Math.max(1, oct - 1); return; }
     if (l === 'x') { oct = Math.min(7, oct + 1); return; }
     const k = KMAP[l]; if (k === undefined) return;
-    e.preventDefault(); on(12 * (oct + 1) + k, 92);
+    e.preventDefault(); capture([0x90, 12 * (oct + 1) + k, 92]); on(12 * (oct + 1) + k, 92);
   });
   addEventListener('keyup', (e) => {
-    if (e.key === ' ') { setSustain(false); return; }
+    if (e.key === ' ') { capture([0xB0, 64, 0]); setSustain(false); return; }
     const k = KMAP[e.key.toLowerCase()]; if (k === undefined) return;
-    off(12 * (oct + 1) + k);
+    capture([0x80, 12 * (oct + 1) + k, 0]); off(12 * (oct + 1) + k);
   });
 
   /* ================= MIDI =================
@@ -714,7 +717,8 @@
   /* ---------- the transport ---------- */
   const PLAY = {
     evs: [], onsets: [], dur: 0, i: 0, pos: 0, speed: 1,
-    playing: false, loop: false, clock: 0, raf: 0
+    playing: false, loop: false, clock: 0, raf: 0,
+    audio: null, aoff: 0, tick: 0                 // a .chordlight take's sound
   };
   const tEl = $('transport'), tName = $('tname'), tPlay = $('tplay'), tSeek = $('tseek'),
         tTime = $('ttime'), tSpeed = $('tspeed'), tLoop = $('tloop'), dropHint = $('drophint');
@@ -738,6 +742,19 @@
     else { off(e.n); send([0x80 | e.ch, e.n, 0]); }
   }
 
+  /* The sound of a .chordlight take: an <audio> that follows the transport
+     clock. `PLAY.aoff` is where the audio's zero sits on the MIDI timeline. */
+  const aud = new Audio();
+  aud.preservesPitch = true;
+  function audioSync(hard) {
+    if (!PLAY.audio) return;
+    const want = PLAY.pos - PLAY.aoff;
+    if (want < 0) { if (!aud.paused) aud.pause(); return; }
+    if (hard || Math.abs(aud.currentTime - want) > 0.08) aud.currentTime = want;
+    aud.playbackRate = PLAY.speed;
+    if (PLAY.playing && aud.paused) aud.play().catch(() => {});
+  }
+
   function seek(t) {
     silence();
     PLAY.pos = Math.max(0, Math.min(t, PLAY.dur));
@@ -755,6 +772,7 @@
     soundingAt.forEach((v, n) => { held.set(n, v); sustained.add(n); send([0x90, n, v]); });
     if (pedal) setSustain(true); else paint();
     PLAY.clock = performance.now() / 1000 - PLAY.pos / PLAY.speed;
+    audioSync(true);
     face();
   }
 
@@ -762,6 +780,7 @@
     if (!PLAY.playing) return;
     PLAY.pos = (performance.now() / 1000 - PLAY.clock) * PLAY.speed;
     while (PLAY.i < PLAY.evs.length && PLAY.evs[PLAY.i].t <= PLAY.pos) dispatch(PLAY.evs[PLAY.i++]);
+    if (PLAY.audio && (PLAY.tick++ % 30 === 0)) audioSync(false);
     if (PLAY.pos >= PLAY.dur) {
       if (PLAY.loop) { seek(0); }
       else { pause(); PLAY.pos = PLAY.dur; }
@@ -771,11 +790,12 @@
   }
 
   function play() {
-    if (!PLAY.evs.length) return;
+    if (!PLAY.evs.length && !PLAY.audio) return;
     if (PLAY.pos >= PLAY.dur) seek(0);
     PLAY.playing = true;
     PLAY.clock = performance.now() / 1000 - PLAY.pos / PLAY.speed;
     tPlay.textContent = '⏸'; tPlay.title = 'Pause';
+    audioSync(true);
     PLAY.raf = requestAnimationFrame(frame);
   }
 
@@ -783,8 +803,15 @@
     PLAY.playing = false;
     cancelAnimationFrame(PLAY.raf);
     tPlay.textContent = '▶'; tPlay.title = 'Play';
+    if (!aud.paused) aud.pause();
     silence();
     face();
+  }
+  function dropAudio() {
+    if (!aud.paused) aud.pause();
+    if (PLAY.audio) { URL.revokeObjectURL(PLAY.audio); PLAY.audio = null; }
+    aud.removeAttribute('src'); aud.load();
+    PLAY.aoff = 0;
   }
 
   function face() {
@@ -804,6 +831,8 @@
      you just finished should not start blaring the moment it is saved. */
   function loadBytes(buffer, name, autoplay = true) {
     const parsed = parseSMF(buffer);
+    pause();
+    dropAudio();
     Object.assign(PLAY, parsed, { i: 0, pos: 0 });
     tName.textContent = name;
     tName.title = name;
@@ -811,9 +840,111 @@
     if (autoplay) play(); else seek(0);
   }
 
+  /* ---------- .chordlight: a take with its sound and its look ----------
+     A plain zip: manifest.json, take.mid, and the mix as mix.m4a / mix.weba
+     / mix.wav. Anyone can open it with a zip tool; Chordlight opens it as a
+     take. The zip is written stored (no compression) — the audio is already
+     compressed and MIDI is tiny — and read stored or deflated. */
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  function zipWrite(entries) {
+    const enc = new TextEncoder(), parts = [], cd = [];
+    let off = 0;
+    const u16 = (v) => [v & 0xff, (v >> 8) & 0xff], u32 = (v) => [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff];
+    const dosT = (() => { const d = new Date(); return { t: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), d: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() }; })();
+    for (const { name, bytes } of entries) {
+      const n = enc.encode(name), crc = crc32(bytes);
+      const local = new Uint8Array([0x50, 0x4B, 3, 4, ...u16(20), ...u16(0x800), ...u16(0), ...u16(dosT.t), ...u16(dosT.d), ...u32(crc), ...u32(bytes.length), ...u32(bytes.length), ...u16(n.length), ...u16(0), ...n]);
+      cd.push(new Uint8Array([0x50, 0x4B, 1, 2, ...u16(20), ...u16(20), ...u16(0x800), ...u16(0), ...u16(dosT.t), ...u16(dosT.d), ...u32(crc), ...u32(bytes.length), ...u32(bytes.length), ...u16(n.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off), ...n]));
+      parts.push(local, bytes); off += local.length + bytes.length;
+    }
+    const cdLen = cd.reduce((a, c) => a + c.length, 0);
+    const end = new Uint8Array([0x50, 0x4B, 5, 6, ...u16(0), ...u16(0), ...u16(entries.length), ...u16(entries.length), ...u32(cdLen), ...u32(off), ...u16(0)]);
+    const out = new Uint8Array(off + cdLen + end.length);
+    let o = 0; for (const p of [...parts, ...cd, end]) { out.set(p, o); o += p.length; }
+    return out;
+  }
+  async function zipRead(buffer) {
+    const b = new Uint8Array(buffer), d = new DataView(buffer), dec = new TextDecoder();
+    let e = b.length - 22;
+    while (e >= 0 && !(b[e] === 0x50 && b[e + 1] === 0x4B && b[e + 2] === 5 && b[e + 3] === 6)) e--;
+    if (e < 0) throw new Error('not a Chordlight file');
+    const count = d.getUint16(e + 10, true); let p = d.getUint32(e + 16, true);
+    const out = new Map();
+    for (let i = 0; i < count; i++) {
+      const method = d.getUint16(p + 10, true), size = d.getUint32(p + 20, true), usize = d.getUint32(p + 24, true);
+      const nl = d.getUint16(p + 28, true), el = d.getUint16(p + 30, true), cl = d.getUint16(p + 32, true), lo = d.getUint32(p + 42, true);
+      const name = dec.decode(b.subarray(p + 46, p + 46 + nl));
+      const lnl = d.getUint16(lo + 26, true), lel = d.getUint16(lo + 28, true);
+      const data = b.subarray(lo + 30 + lnl + lel, lo + 30 + lnl + lel + size);
+      if (method === 0) out.set(name, data);
+      else if (method === 8) {
+        const ds = new DecompressionStream('deflate-raw');
+        const buf = await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer();
+        out.set(name, new Uint8Array(buf, 0, usize));
+      } else throw new Error('unsupported zip entry');
+      p += 46 + nl + el + cl;
+    }
+    return out;
+  }
+  const isZip = (buffer) => { const b = new Uint8Array(buffer, 0, 4); return b[0] === 0x50 && b[1] === 0x4B && b[2] === 3 && b[3] === 4; };
+
+  /* The look travels with the take: key centre, spelling, labels, accent.
+     Applied for this playback, not written to your preferences. */
+  function applyLook(m) {
+    if (m.keyCenter && [...keysel.options].some((o) => o.value === m.keyCenter)) keysel.value = m.keyCenter;
+    if (['auto', 'sharp', 'flat'].includes(m.spelling)) spellsel.value = m.spelling;
+    if (['notes', 'solfa', 'off'].includes(m.labelMode)) {
+      labelMode = m.labelMode;
+      [...$('labelseg').children].forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.mode === labelMode)));
+    }
+    if (ACCENTS[m.accent]) { accent = m.accent; paintTheme(); [...$('swatches').children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === accent))); }
+  }
+  async function loadChordlight(buffer, name, autoplay) {
+    const z = await zipRead(buffer);
+    const mf = z.get('manifest.json'); if (!mf) throw new Error('no manifest');
+    const m = JSON.parse(new TextDecoder().decode(mf));
+    if (m.format !== 'chordlight') throw new Error('not a Chordlight file');
+    const mid = z.get((m.midi && m.midi.file) || 'take.mid');
+    let parsed = { evs: [], onsets: [], dur: 0 };
+    if (mid) { try { parsed = parseSMF(mid.buffer.slice(mid.byteOffset, mid.byteOffset + mid.byteLength)); } catch { /* sound only */ } }
+    pause(); dropAudio();
+    Object.assign(PLAY, parsed, { i: 0, pos: 0 });
+    tName.textContent = m.title || name; tName.title = m.title || name;
+    tEl.classList.remove('empty', 'collapsed');
+    seek(0);
+    const a = m.audio && z.get(m.audio.file);
+    if (a) {
+      const type = m.audio.mime || 'audio/mp4';
+      PLAY.audio = URL.createObjectURL(new Blob([a], { type }));
+      PLAY.aoff = (m.audio.offsetMs || 0) / 1000;
+      aud.src = PLAY.audio;
+      aud.load();
+      /* the take may end after the last note — let the sound run its length.
+         The manifest says how long; a recorder's WebM reports Infinity until
+         it has been seeked past the end, so that is the fallback. */
+      const extend = (secs) => { if (isFinite(secs) && secs > 0) { PLAY.dur = Math.max(PLAY.dur, secs + PLAY.aoff); face(); } };
+      if (m.audio.durationMs) extend(m.audio.durationMs / 1000);
+      else aud.addEventListener('loadedmetadata', () => {
+        if (isFinite(aud.duration)) { extend(aud.duration); return; }
+        const onDur = () => { if (isFinite(aud.duration)) { aud.removeEventListener('durationchange', onDur); extend(aud.duration); aud.currentTime = 0; } };
+        aud.addEventListener('durationchange', onDur);
+        aud.currentTime = 1e6;
+      }, { once: true });
+    }
+    applyLook(m);
+    paint();
+    if (autoplay) play();
+  }
+  /* any take: a .mid, or a .chordlight */
+  async function loadAny(buffer, name, autoplay) {
+    if (isZip(buffer)) await loadChordlight(buffer, name, autoplay);
+    else loadBytes(buffer, name, autoplay);
+  }
+
   async function loadFile(file) {
     try {
-      loadBytes(await file.arrayBuffer(), file.name, true);
+      await loadAny(await file.arrayBuffer(), file.name, true);
     } catch (err) {
       tName.textContent = 'Could not read ' + file.name;
       tName.title = String(err.message || err);
@@ -833,7 +964,7 @@
     recList.appendChild(head);
     items.forEach((r) => {
       const o = document.createElement('option');
-      o.value = r.name; o.textContent = r.name.replace(/\.midi?$/i, '');
+      o.value = r.name; o.textContent = r.name.replace(/\.(midi?|chordlight)$/i, '') + (/\.chordlight$/i.test(r.name) ? '  ♪' : '');
       recList.appendChild(o);
     });
   }
@@ -845,7 +976,7 @@
       let buffer;
       if (BRIDGE) buffer = await BRIDGE.readRecording(name);
       else buffer = sessionRecs.find((r) => r.name === name).bytes.buffer;
-      loadBytes(buffer, name, false);
+      await loadAny(buffer, name, false);
       toast('Cued  ' + name);
     } catch (err) {
       toast('Could not open ' + name);
@@ -859,6 +990,7 @@
   tSpeed.addEventListener('change', () => {
     PLAY.speed = +tSpeed.value;
     PLAY.clock = performance.now() / 1000 - PLAY.pos / PLAY.speed;
+    audioSync(false);
   });
   tLoop.addEventListener('click', () => {
     PLAY.loop = !PLAY.loop;
@@ -872,9 +1004,10 @@
   });
   $('tclose').addEventListener('click', () => {
     pause();
+    dropAudio();
     Object.assign(PLAY, { evs: [], onsets: [], dur: 0, i: 0, pos: 0 });
     tEl.classList.add('empty');
-    tName.textContent = 'Drop a .mid anywhere, or open one';
+    tName.textContent = 'Drop a .mid or .chordlight anywhere, or open one';
     tName.title = '';
   });
 
@@ -941,11 +1074,12 @@
      the phrase you wish you had recorded can still be saved. Rec makes a
      deliberate take on top of that. */
   const KEEP_SECONDS = 300;
-  const CAP = { buf: [] };
+  var CAP = { buf: [] };                     // var: capture() may run before this line
   const REC = { on: false, start: 0, events: [], timer: 0 };
   const recBtn = $('recbtn'), keepBtn = $('keepbtn');
 
   function capture(bytes) {
+    if (!CAP) return;                        // before the recorder is set up
     const t = performance.now() / 1000;
     const b = Array.from(bytes);
     CAP.buf.push({ t, b });
@@ -956,11 +1090,11 @@
 
   /* Standard MIDI file, format 0, 480 ppq at 120 bpm — so one second is
      exactly 960 ticks and the timing is what was played, not quantised. */
-  function writeSMF(events) {
+  function writeSMF(events, from) {
     const TPS = 960;
     const vlq = (n) => { const out = [n & 0x7f]; n >>= 7; while (n) { out.unshift((n & 0x7f) | 0x80); n >>= 7; } return out; };
     const trk = [...vlq(0), 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20];
-    const t0 = events.length ? events[0].t : 0;
+    const t0 = from !== undefined ? from : (events.length ? events[0].t : 0);
     const open = new Set();
     let last = 0;
     for (const e of events) {
@@ -995,6 +1129,7 @@
     recFace();
     REC.timer = setInterval(recFace, 500);
     if (withWav) startWav(REC.base).catch((err) => toast('No WAV — ' + (err.message || err)));
+    if (alsoPack && !PACK.on) startPack(REC.base, 'rec').catch((err) => toast('No Chordlight file — ' + (err.message || err)));
   }
   function stopRec() {
     REC.on = false;
@@ -1002,7 +1137,8 @@
     recBtn.setAttribute('aria-pressed', 'false');
     recBtn.textContent = '● Rec';
     recBtn.title = 'Record the MIDI you play to a .mid file';
-    if (WAV.on && WAV.owner === 'rec') stopWav();
+    const wav = (WAV.on && WAV.owner === 'rec') ? stopWav() : null;
+    if (PACK.on && PACK.owner === 'rec') stopPack(REC.events, REC.start, REC.base, wav);
     if (!REC.events.length) { toast('Nothing was played'); return; }
     keepRecording(REC.base + '.mid', writeSMF(REC.events));
   }
@@ -1134,6 +1270,7 @@
   const markAlso = () => {
     alsoMidiBtn.setAttribute('aria-pressed', String(alsoMidi)); alsoMidiBtn.classList.toggle('on', alsoMidi);
     alsoWavBtn.setAttribute('aria-pressed', String(alsoWav)); alsoWavBtn.classList.toggle('on', alsoWav);
+    alsoPackBtn.setAttribute('aria-pressed', String(alsoPack)); alsoPackBtn.classList.toggle('on', alsoPack);
   };
   alsoMidiBtn.addEventListener('click', () => { alsoMidi = !alsoMidi; markAlso(); store({ alsoMidi }); });
   alsoWavBtn.addEventListener('click', () => { alsoWav = !alsoWav; markAlso(); store({ alsoWav }); });
@@ -1181,7 +1318,75 @@
     WAV.chunks = [];
     const wasOwner = WAV.owner; WAV.owner = '';
     if (WAV.frames > rate / 4) saveBytes(WAV.base + '.wav', file, 'audio/wav');
-    if (wasOwner === 'rec' && !MIX.recording) monitorInputs();   // give the graph back to the meters, or close it
+    if (wasOwner === 'rec' && !MIX.recording && !PACK.on) monitorInputs();   // give the graph back to the meters, or close it
+    return file;
+  }
+
+  /* ---------- .chordlight: packing ----------
+     The mix, compressed (AAC in .m4a where the recorder can, else Opus in
+     .weba), recorded alongside the MIDI take from the same graph. With
+     + WAV on, the WAV goes inside instead. The MIDI is written from the
+     moment Rec started, not from the first note, so the two line up. */
+  const AUDIO_CONTAINERS = [
+    { mime: 'audio/mp4;codecs=mp4a.40.2', ext: 'm4a', label: 'AAC' },
+    { mime: 'audio/webm;codecs=opus', ext: 'weba', label: 'Opus' },
+    { mime: 'audio/webm', ext: 'weba', label: 'Opus' }
+  ];
+  const AUDIO_CONTAINER = (typeof MediaRecorder !== 'undefined' && AUDIO_CONTAINERS.find((c) => MediaRecorder.isTypeSupported(c.mime)))
+    || AUDIO_CONTAINERS[AUDIO_CONTAINERS.length - 1];
+  const PACK = { on: false, owner: '', rec: null, chunks: [], start: 0, base: '' };
+  const alsoPackBtn = $('alsopack');
+  let alsoPack = false;
+  alsoPackBtn.addEventListener('click', () => { alsoPack = !alsoPack; markAlso(); store({ alsoPack }); });
+
+  async function startPack(base, owner) {
+    if (PACK.on) return;
+    if (!MIX.ctx) await buildMix(null);
+    if (!MIX.ctx) throw new Error('no audio graph');
+    const rec = new MediaRecorder(MIX.dest.stream, { mimeType: AUDIO_CONTAINER.mime, audioBitsPerSecond: 256e3 });
+    Object.assign(PACK, { on: true, owner, rec, chunks: [], base, start: 0 });
+    rec.ondataavailable = (e) => { if (e.data.size) PACK.chunks.push(e.data); };
+    rec.onstart = () => { PACK.start = performance.now() / 1000; };
+    rec.start(1000);
+  }
+  /* `events`/`from`: the MIDI take and its zero. `wav`: bytes to put inside
+     instead of the compressed mix, when + WAV is on. */
+  function stopPack(events, from, base, wav) {
+    if (!PACK.on) return;
+    PACK.on = false;
+    const rec = PACK.rec, owner = PACK.owner;
+    const durationMs = PACK.start ? Math.round((performance.now() / 1000 - PACK.start) * 1000) : 0;
+    PACK.rec = null; PACK.owner = '';
+    const finish = async () => {
+      const mid = writeSMF(events, from);
+      const audioBlob = new Blob(PACK.chunks, { type: AUDIO_CONTAINER.mime.split(';')[0] });
+      PACK.chunks = [];
+      const useWav = !!(wav && wav.length > 44);
+      const audioBytes = useWav ? wav : new Uint8Array(await audioBlob.arrayBuffer());
+      const audioFile = useWav ? 'mix.wav' : 'mix.' + AUDIO_CONTAINER.ext;
+      const offsetMs = Math.round(((PACK.start || from) - from) * 1000);
+      const manifest = {
+        format: 'chordlight', version: 1,
+        app: 'Chordlight 88' + (APP_VERSION ? ' ' + APP_VERSION : ''),
+        created: new Date().toISOString(),
+        title: base,
+        keyCenter: keysel.value, spelling: spellsel.value, labelMode, accent,
+        midi: { file: 'take.mid' },
+        audio: audioBytes.length ? { file: audioFile, mime: useWav ? 'audio/wav' : AUDIO_CONTAINER.mime.split(';')[0], offsetMs, durationMs } : null
+      };
+      const entries = [
+        { name: 'manifest.json', bytes: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) },
+        { name: 'take.mid', bytes: mid }
+      ];
+      if (manifest.audio) entries.push({ name: audioFile, bytes: audioBytes });
+      const file = zipWrite(entries);
+      await saveBytes(base + '.chordlight', file, 'application/zip');
+      sessionRecs.unshift({ name: base + '.chordlight', bytes: file });
+      refreshRecList();
+      if (owner === 'rec' && !MIX.recording) monitorInputs();
+    };
+    if (rec && rec.state !== 'inactive') { rec.onstop = () => finish().catch((err) => toast('Could not pack — ' + (err.message || err))); rec.stop(); }
+    else finish().catch((err) => toast('Could not pack — ' + (err.message || err)));
   }
   const rms = (an, buf) => {
     an.getFloatTimeDomainData(buf);
@@ -1252,7 +1457,7 @@
   /* Meters run while Advanced is open and no clip is recording; a clip
      owns the graph for its duration. */
   function monitorInputs() {
-    if (MIX.recording || WAV.on) return;
+    if (MIX.recording || WAV.on || PACK.on) return;
     if (advOpen && !setup.hidden) { buildMix(null).catch(() => {}); mixNote.textContent = 'Meters live'; }
     else { tearDownMix(); mixNote.textContent = 'Meters run while Advanced is open'; }
   }
@@ -1341,15 +1546,17 @@
     VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Q.vbps, audioBitsPerSecond: Q.abps });
     VID.rec.ondataavailable = (e) => { if (e.data.size) VID.chunks.push(e.data); };
     VID.rec.onstop = async () => {
-      if (WAV.on && WAV.owner === 'video') stopWav();
+      const wav = (WAV.on && WAV.owner === 'video') ? stopWav() : null;
+      if (PACK.on && PACK.owner === 'video') stopPack(REC.events.slice(), REC.start, base, wav);
       if (REC.on && REC.base === base) stopRec();
       stopAll();
       const blob = new Blob(VID.chunks, { type: CONTAINER.mime.split(';')[0] });
       saveBytes(`${base}.${CONTAINER.ext}`, new Uint8Array(await blob.arrayBuffer()), CONTAINER.mime.split(';')[0]);
     };
     /* the same take, on the side: what you played, and the sound uncompressed */
-    if (alsoMidi && !REC.on) startRec(base, false);
+    if ((alsoMidi || alsoPack) && !REC.on) startRec(base, false);
     if (alsoWav) startWav(base).catch((err) => toast('No WAV — ' + (err.message || err)));
+    if (alsoPack) startPack(base, 'video').catch((err) => toast('No Chordlight file — ' + (err.message || err)));
     ended.addEventListener('ended', () => { if (VID.rec && VID.rec.state !== 'inactive') stopVideo(); });
     VID.rec.start(1000);
     VID.start = performance.now() / 1000;
@@ -1601,10 +1808,17 @@
     paint();
   });
 
+  let APP_VERSION = '';
   async function boot() {
     if (BRIDGE) {
       settingsCache = await BRIDGE.getSettings();
       const info = await BRIDGE.appInfo();
+      APP_VERSION = info.version;
+      /* a double-clicked .chordlight or .mid, at launch or while running */
+      BRIDGE.onOpenFile(async ({ name, bytes }) => {
+        try { await loadAny(bytes, name, false); toast('Cued  ' + name); }
+        catch (err) { toast('Could not open ' + name + ' — ' + (err.message || err)); }
+      });
       if (info.platform === 'darwin') document.body.classList.add('mac');
       const v = document.querySelector('.wordmark span');
       if (v) v.textContent = 'Amanorsac Studio · v' + info.version;
@@ -1631,7 +1845,7 @@
     offsetEl.value = audioOffset; offsetFace();
     if (QUALITY[settingsCache.videoQuality]) videoQuality = settingsCache.videoQuality;
     qualSel.value = videoQuality;
-    alsoMidi = settingsCache.alsoMidi === true; alsoWav = settingsCache.alsoWav === true; markAlso();
+    alsoMidi = settingsCache.alsoMidi === true; alsoWav = settingsCache.alsoWav === true; alsoPack = settingsCache.alsoPack === true; markAlso();
     fmtBadge.textContent = CONTAINER.label;
     fmtBadge.title = CONTAINER.ext === 'mp4' ? 'This machine records straight to MP4' : 'This machine cannot write MP4 — clips are WebM';
     refreshRecList();
@@ -1671,6 +1885,7 @@
       }
     }
     applyTheme(false);
+    if (BRIDGE) BRIDGE.ready();
   }
 
   boot();

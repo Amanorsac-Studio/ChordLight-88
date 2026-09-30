@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('chordlight', {
   captureKind: (kind) => ipcRenderer.send('capture:kind', kind),
   captureSources: () => ipcRenderer.invoke('capture:sources'),
 
+  /* a .chordlight / .mid the OS asked us to open */
+  onOpenFile: (cb) => ipcRenderer.on('file:open', (_e, f) => cb(f)),
+  ready: () => ipcRenderer.send('renderer:ready'),
+
   openExternal: (url) => ipcRenderer.send('open:external', url),
 
   appInfo: () => ipcRenderer.invoke('app:info')

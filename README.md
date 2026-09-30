@@ -26,7 +26,10 @@ Amanorsac Studio · Windows and macOS · Electron.
 - **MIDI file playback** with transport, chord stepping, speed and loop, optionally
   out to a MIDI port so a VST makes the sound.
 - **Recording** — MIDI takes and a five-minute "Keep" buffer to `.mid`; video of
-  the window to WebM (system audio on Windows).
+  the window to MP4 (H.264 + AAC where the machine can, else WebM); optionally a
+  24-bit WAV of the mix alongside.
+- **.chordlight** — a take, its sound and its look in one shareable file; opens
+  cued in the transport, plays back keys, chords and audio together, at any speed.
 - **Stage** full-screen mode, solid/gradient key light, fixed/sensitive velocity,
   your own picture as the backdrop with a tint over it.
 - **Video with sound** — system sound, a keyboard input, a vocal input, or all three

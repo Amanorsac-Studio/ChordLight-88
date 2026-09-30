@@ -152,3 +152,22 @@ The picture goes to Documents/Amanorsac Studio/Chordlight 88/Backdrop as
 backdrop.<ext> — the preferences file stays small and readable — and comes to
 the renderer as a data URL, so the CSP never has to admit a file: URL.
 Pop-outs fetch it once rather than receiving it with every note.
+
+## .chordlight is a zip with a manifest, not a new binary format
+
+Three files anyone can pull apart — manifest.json, take.mid, and the mix —
+so a take is never locked to this app: a DAW gets the MIDI, a player gets
+the audio. Stored, not deflated (the audio is already compressed); read
+either way. The MIDI is written from the moment Rec started rather than the
+first note, and the manifest carries the audio's offset from that zero and
+its length, because a recorder's WebM reports no duration of its own.
+
+The extension is `.chordlight`, not `.cdl`: `.cdl` is the ASC Color Decision
+List that DaVinci Resolve and Premiere own. Only `.chordlight` is claimed in
+the OS; `.mid` stays with the user's DAW and comes in through Open… or a
+drop.
+
+The look — key centre, spelling, labels, accent — rides along and is applied
+for that playback without being saved to preferences: the sender's view,
+not a change to the receiver's setup. The backdrop picture does not ride
+along: megabytes in every take for a decoration.

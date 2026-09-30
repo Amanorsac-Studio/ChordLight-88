@@ -2,6 +2,24 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.3.0 — September 2026
+
+- **.chordlight files.** A take, its sound and its look in one file. Turn on
+  Advanced › Also save › + .chordlight and every Rec take and every video
+  also saves a `.chordlight` beside it. Send it to anyone with Chordlight:
+  double-click and it opens cued in the transport — play and the keys light,
+  the chords read out and the sound plays underneath; step, scrub, loop, and
+  slow it to ½× with the pitch held, sound and all.
+- Inside: `take.mid`, the mix as AAC (or Opus where the machine has no AAC
+  encoder; the 24-bit WAV instead when + WAV is on), and a small manifest
+  with the key centre, spelling, Notes/Sol-fa and accent colour, which are
+  applied for that playback without touching your own preferences. It is a
+  plain zip — anyone can open it with a zip tool.
+- The Recordings list shows `.chordlight` takes with a ♪; Open… and
+  drag-and-drop take them too.
+- **Rec and Keep now hear the mouse and the computer keyboard** as well as
+  MIDI, so a take made without a keyboard plugged in is still a take.
+
 ## 1.2.2 — September 2026
 
 - **Clips are MP4** (H.264 + AAC) on any machine whose recorder can write

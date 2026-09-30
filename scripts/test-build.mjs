@@ -16,7 +16,7 @@ const out = html
   .replace(/<meta http-equiv="Content-Security-Policy"[\s\S]*?>/,
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; ' +
     'script-src \'unsafe-inline\'; style-src \'unsafe-inline\' https://fonts.googleapis.com; ' +
-    'font-src https://fonts.gstatic.com; img-src \'self\' data:;">')
+    'font-src https://fonts.gstatic.com; img-src \'self\' data:; media-src blob:;">')
   .replace('<link rel="stylesheet" href="fonts/fonts.css">',
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
     '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?' +

@@ -48,6 +48,7 @@ const PREF_DEFAULTS = {
   videoQuality: 'good',
   alsoMidi: false,
   alsoWav: false,
+  alsoPack: false,
   keyGain: 0,
   vocGain: 0,
   advanced: false
