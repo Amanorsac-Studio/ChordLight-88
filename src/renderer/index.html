@@ -198,6 +198,21 @@
       </div>
       <span class="badge" id="picbadge" hidden>No picture yet</span>
     </div>
+    <div class="row mix">
+      <div class="tag"><span class="led"></span>Mix</div>
+      <div class="grp strip">
+        <label class="fld" for="keygain">Keyboard <span class="rv" id="keygainv">0 dB</span></label>
+        <div class="vmeter wide"><i id="keymeter"></i></div>
+        <input type="range" id="keygain" min="-24" max="12" step="1" value="0" title="Keyboard input level in the clip">
+      </div>
+      <div class="grp strip">
+        <label class="fld" for="vocgain">Vocal <span class="rv" id="vocgainv">0 dB</span></label>
+        <div class="vmeter wide"><i id="vocmeter"></i></div>
+        <input type="range" id="vocgain" min="-24" max="12" step="1" value="0" title="Vocal input level in the clip">
+      </div>
+      <span class="badge quiet" id="duckbadge" title="Lights while the vocal input is pushing the keys down">Duck</span>
+      <span class="badge quiet" id="mixnote">Meters run while Advanced is open</span>
+    </div>
   </div>
 
   <div class="transport raised empty" id="transport">

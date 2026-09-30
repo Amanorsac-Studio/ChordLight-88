@@ -2,6 +2,26 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.2.1 — September 2026
+
+- **Keys light instantly.** The solid key colour was fading in over 80 ms
+  from nothing, which read as a black flash before the colour. No fade now.
+- **Nothing in the app can be selected or copied** with the mouse any more —
+  it is an instrument, not a page. (Text fields and the About paths still can.)
+- **Advanced › Mix** — a Keyboard strip and a Vocal strip, each with a live
+  meter and a level fader, and a Duck light that comes on while your voice is
+  pushing the keys down. Meters run whenever Advanced is open, so you can
+  set levels before you press Video.
+- **Video tries harder.** If this machine's window capturer refuses the
+  window ("Error starting video capture"), the app retries the old way, then
+  records the screen the window is on and tells you so — instead of giving up.
+- **macOS:** the app now carries the microphone entitlement and usage text
+  it has needed since audio inputs arrived in 1.1.1 — without them a signed
+  build ends the moment an input is opened.
+- **Off means off.** Notes / Sol-fa / Off now also govern the Number card:
+  Off blanks it (and the number pop-out), and takes the names off the keys.
+  The chord itself always shows.
+
 ## 1.2.0 — September 2026
 
 - **Your MIDI devices are back.** 1.1.1 added a permission gate for video

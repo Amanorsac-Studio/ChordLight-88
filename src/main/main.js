@@ -298,13 +298,36 @@ function allowSelfCapture() {
     callback(decide(permission, details));
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission, _origin, details) => decide(permission, details));
+  /* Which picture a display request gets. 'window' is this window and
+     nothing else. If Chromium cannot start a capture of the window on this
+     machine (frameless windows and some graphics drivers trip its window
+     capturer with "Error starting video capture"), the renderer asks for
+     'screen' — the display this window is on — and says so in a toast. */
+  let captureKind = 'window';
+  ipcMain.on('capture:kind', (_e, kind) => { captureKind = kind === 'screen' ? 'screen' : 'window'; });
+  ipcMain.handle('capture:sources', async () => {
+    const id = mainWin && !mainWin.isDestroyed() ? mainWin.getMediaSourceId() : null;
+    const sources = await desktopCapturer.getSources({ types: ['window', 'screen'], thumbnailSize: { width: 0, height: 0 } });
+    const mine = sources.find((src) => src.id === id);
+    const disp = mainWin && !mainWin.isDestroyed() ? screen.getDisplayMatching(mainWin.getBounds()) : screen.getPrimaryDisplay();
+    const scr = sources.find((src) => src.display_id === String(disp.id)) || sources.find((src) => src.id.startsWith('screen:'));
+    return { window: mine ? mine.id : null, screen: scr ? scr.id : null };
+  });
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-    desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
+    desktopCapturer.getSources({ types: ['window', 'screen'], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
+        const audio = process.platform === 'win32' ? 'loopback' : undefined;
+        if (captureKind === 'screen') {
+          const disp = mainWin && !mainWin.isDestroyed() ? screen.getDisplayMatching(mainWin.getBounds()) : screen.getPrimaryDisplay();
+          const scr = sources.find((src) => src.display_id === String(disp.id)) || sources.find((src) => src.id.startsWith('screen:'));
+          if (!scr) { callback({}); return; }
+          callback({ video: scr, audio });
+          return;
+        }
         const id = mainWin && !mainWin.isDestroyed() ? mainWin.getMediaSourceId() : null;
         const mine = sources.find((src) => src.id === id);
-        if (!mine) { callback({}); return; }      // never a screen, never another window
-        callback({ video: mine, audio: process.platform === 'win32' ? 'loopback' : undefined });
+        if (!mine) { callback({}); return; }      // never another window
+        callback({ video: mine, audio });
       })
       .catch(() => callback({}));
   });

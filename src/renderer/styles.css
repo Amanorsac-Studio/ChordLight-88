@@ -19,6 +19,9 @@
   --font-x:"Barlow Condensed","Inter","Segoe UI",sans-serif;
 }
 *{box-sizing:border-box}
+/* an instrument, not a document: nothing here is for selecting and copying */
+body{user-select:none;-webkit-user-select:none}
+input,select,textarea,.aboutbox dd{user-select:text;-webkit-user-select:text}
 [hidden]{display:none!important}
 body{
   margin:0;color:var(--text);font-family:var(--font-d);min-height:100vh;
@@ -199,7 +202,7 @@ button.btn.on{
   border:1px solid var(--key-line);border-radius:0 0 4px 4px;
   display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;
   font-family:var(--font-m);font-size:9.5px;color:var(--key-lbl);
-  transition:background 80ms linear,box-shadow 80ms linear;
+  transition:box-shadow 80ms linear;   /* never background: a colour fading in reads as a black flash */
 }
 .bk{
   position:absolute;top:0;height:62%;cursor:pointer;z-index:3;
@@ -208,7 +211,7 @@ button.btn.on{
   display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;
   font-family:var(--font-m);font-size:8.5px;color:var(--key-blbl);
   box-shadow:0 3px 6px var(--shadow);
-  transition:background 80ms linear,box-shadow 80ms linear;
+  transition:box-shadow 80ms linear;
 }
 .wk.on,.bk.on{
   background:linear-gradient(180deg,var(--vlo) 0%,var(--vmid) 53%,var(--vhi) 100%);
@@ -225,7 +228,6 @@ button.btn.on{
     color-mix(in srgb,var(--vmid) 46%,var(--key-w2)) 53%,
     color-mix(in srgb,var(--vhi) 42%,var(--key-w3)) 100%);
   box-shadow:none;
-  transition:background 260ms ease-out;
 }
 .bk.ring{
   background:linear-gradient(180deg,
@@ -271,6 +273,11 @@ button.btn.on{
 .badge.warn{border-color:color-mix(in srgb,var(--alt) 40%,var(--edge));color:var(--alt)}
 .vmeter{width:96px;height:8px;border-radius:4px;background:var(--void);border:1px solid var(--edge);box-shadow:inset 0 2px 5px var(--inset);overflow:hidden}
 .vmeter i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--a1),var(--a2) 55%,var(--a3) 82%,var(--a4));transition:width 70ms linear}
+.vmeter.wide{width:180px;height:10px;margin-bottom:6px}
+.vmeter.hot i{background:linear-gradient(90deg,var(--a1),var(--a2) 45%,#FFB53D 78%,#E0407E)}
+.strip input[type=range]{width:180px}
+.badge.quiet{color:var(--text-faint);border-color:var(--edge)}
+.badge.lit{color:#fff;background:var(--a2);border-color:var(--a2)}
 input[type=range]{width:112px;accent-color:var(--a2);background:transparent}
 /* Advanced — the drawer continued, in labelled rows. Same controls, same
    style; only the row tag is new. */

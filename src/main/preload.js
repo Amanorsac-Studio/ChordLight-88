@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('chordlight', {
   setBackdrop: (bytes, ext) => ipcRenderer.invoke('backdrop:set', { bytes, ext }),
   getBackdrop: () => ipcRenderer.invoke('backdrop:get'),
 
+  /* video capture: which picture, and the raw source ids for the fallback path */
+  captureKind: (kind) => ipcRenderer.send('capture:kind', kind),
+  captureSources: () => ipcRenderer.invoke('capture:sources'),
+
   openExternal: (url) => ipcRenderer.send('open:external', url),
 
   appInfo: () => ipcRenderer.invoke('app:info')

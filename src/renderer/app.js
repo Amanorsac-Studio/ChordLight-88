@@ -375,7 +375,8 @@
     const notes = sounding();
     const ch = detect(notes), rootPc = ch ? ch.root : -1;
     const solfaMode = (labelMode === 'solfa');
-    const eyebrow = (solfaMode ? 'Sol-fa · key of ' : 'Number · key of ') + keysel.value;
+    const labelsOff = labelMode === 'off';
+    const eyebrow = labelsOff ? 'Number · off' : (solfaMode ? 'Sol-fa · key of ' : 'Number · key of ') + keysel.value;
     if (!$('numcard').classList.contains('popped')) numEyebrow.textContent = eyebrow;
 
     /* everything the keybed needs, so the keys window mirrors it exactly */
@@ -428,8 +429,8 @@
       else if (sustain) chips.push('<span class="pill">sustained</span>');
       text = {
         chordClass: 'big', chordHTML,
-        numClass: 'big', numHTML,
-        romanText, metaHTML: chips.join(''), numEyebrow: eyebrow
+        numClass: labelsOff ? 'big empty' : 'big', numHTML: labelsOff ? '—' : numHTML,
+        romanText: labelsOff ? '' : romanText, metaHTML: chips.join(''), numEyebrow: eyebrow
       };
     }
 
@@ -1051,28 +1052,39 @@
   vocalInSel.addEventListener('change', () => { vocalInput = vocalInSel.value; store({ vocalInput }); });
   const duckFace = () => { duckV.textContent = duck ? `−${duck} dB` : 'off'; };
   const offsetFace = () => { offsetV.textContent = audioOffset + ' ms'; };
-  duckEl.addEventListener('input', () => { duck = +duckEl.value; duckFace(); store({ duck }); if (LIVE.duckGain) LIVE.duckDepth = duck; });
-  offsetEl.addEventListener('input', () => {
-    audioOffset = +offsetEl.value; offsetFace(); store({ audioOffset });
-    if (LIVE.delay) LIVE.delay.delayTime.value = audioOffset / 1000;
-  });
-  qualSel.addEventListener('change', () => { videoQuality = qualSel.value; store({ videoQuality }); });
   if (navigator.mediaDevices) {
     refreshInputs();
     navigator.mediaDevices.addEventListener('devicechange', refreshInputs);
   }
-  /* what the current clip's audio graph exposes, so the sliders work live */
-  const LIVE = { duckGain: null, duckDepth: 0, delay: null };
+  /* ================= the mix =================
+     One audio graph serves two jobs. While Advanced is open it meters the
+     keyboard and vocal inputs so you can set levels before a take; while a
+     clip records, the same graph is what goes into the file. Keyboard and
+     system share a gain the vocal pushes down while it hears you (the duck);
+     the vocal goes straight in; the whole mix can be delayed a few ms so it
+     lines up with the picture. */
   const QUALITY = {
     best:  { fps: 60, vbps: 20e6, abps: 256e3 },
     good:  { fps: 30, vbps: 8e6,  abps: 192e3 },
     small: { fps: 30, vbps: 3e6,  abps: 128e3 }
   };
+  const keyGainEl = $('keygain'), vocGainEl = $('vocgain'), keyGainV = $('keygainv'), vocGainV = $('vocgainv'),
+        keyMeter = $('keymeter'), vocMeter = $('vocmeter'), duckBadge = $('duckbadge'), mixNote = $('mixnote');
+  let keyGainDb = 0, vocGainDb = 0;
+  const dbToGain = (db) => Math.pow(10, db / 20);
+  const gainFace = () => {
+    keyGainV.textContent = (keyGainDb > 0 ? '+' : '') + keyGainDb + ' dB';
+    vocGainV.textContent = (vocGainDb > 0 ? '+' : '') + vocGainDb + ' dB';
+  };
+  keyGainEl.addEventListener('input', () => { keyGainDb = +keyGainEl.value; gainFace(); store({ keyGain: keyGainDb }); if (MIX.keyGain) MIX.keyGain.gain.value = dbToGain(keyGainDb); });
+  vocGainEl.addEventListener('input', () => { vocGainDb = +vocGainEl.value; gainFace(); store({ vocGain: vocGainDb }); if (MIX.vocGain) MIX.vocGain.gain.value = dbToGain(vocGainDb); });
+  duckEl.addEventListener('input', () => { duck = +duckEl.value; duckFace(); store({ duck }); });
+  offsetEl.addEventListener('input', () => {
+    audioOffset = +offsetEl.value; offsetFace(); store({ audioOffset });
+    if (MIX.delay) MIX.delay.delayTime.value = audioOffset / 1000;
+  });
+  qualSel.addEventListener('change', () => { videoQuality = qualSel.value; store({ videoQuality }); });
 
-  /* One video track from the window, and an audio track built to order:
-     the system sound the window capture carries (Windows), an input device
-     (a keyboard through an interface, a mic, BlackHole on a Mac), or both
-     mixed through an AudioContext. */
   const rawAudio = (id) => (id
     ? { deviceId: { exact: id }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
     : { echoCancellation: false, noiseSuppression: false, autoGainControl: false });
@@ -1088,75 +1100,148 @@
     }
   }
 
-  /* One video track from the window, and an audio track built to order:
-       system   — what the window capture carries (Windows), i.e. the sounds
-                  the keyboard is triggering in a DAW or Kontakt
-       keyboard — an input device: the keyboard through an interface
-       vocal    — a second input: a mic
-     Keyboard and system go through one gain that the vocal input pushes
-     down while it hears you (the duck); the vocal goes straight in. The
-     whole mix can be delayed a few ms so it lines up with the picture. */
+  const MIX = { ctx: null, keyGain: null, vocGain: null, bed: null, delay: null, dest: null,
+                keyAn: null, vocAn: null, streams: [], raf: 0, recording: false, ducked: false };
+  const rms = (an, buf) => {
+    an.getFloatTimeDomainData(buf);
+    let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    return 20 * Math.log10(Math.sqrt(sum / buf.length) + 1e-9);
+  };
+  const meterWidth = (db) => Math.max(0, Math.min(100, (db + 60) / 60 * 100));   // −60 dBFS … 0
+
+  /* Builds the graph from the chosen inputs. `sysTrack` is the system sound
+     a window capture carried, only while recording. Returns nothing; the
+     graph lives in MIX until tearDownMix(). */
+  async function buildMix(sysTrack) {
+    tearDownMix();
+    const wantInput = videoSound === 'input' || videoSound === 'both';
+    const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+    const dest = ctx.createMediaStreamDestination();
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = audioOffset / 1000;
+    delay.connect(dest);
+    const bed = ctx.createGain();            // keyboard + system: what the duck pushes down
+    bed.connect(delay);
+    const keyGain = ctx.createGain(); keyGain.gain.value = dbToGain(keyGainDb); keyGain.connect(bed);
+    const vocGain = ctx.createGain(); vocGain.gain.value = dbToGain(vocGainDb); vocGain.connect(delay);
+    const keyAn = ctx.createAnalyser(); keyAn.fftSize = 512; keyGain.connect(keyAn);
+    const vocAn = ctx.createAnalyser(); vocAn.fftSize = 512; vocGain.connect(vocAn);
+    Object.assign(MIX, { ctx, dest, delay, bed, keyGain, vocGain, keyAn, vocAn, streams: [] });
+
+    if (sysTrack) ctx.createMediaStreamSource(new MediaStream([sysTrack])).connect(bed);
+    let hasVocal = false;
+    if (wantInput || !MIX.recording) {
+      const keyStream = await openInput(audioInput, 'keyboard input');
+      if (MIX.ctx !== ctx) { keyStream && keyStream.getTracks().forEach((t) => t.stop()); return; }   // torn down meanwhile
+      if (keyStream) { MIX.streams.push(keyStream); ctx.createMediaStreamSource(keyStream).connect(keyGain); }
+      if (vocalInput && vocalInput !== audioInput) {
+        const vocStream = await openInput(vocalInput, 'vocal input');
+        if (MIX.ctx !== ctx) { vocStream && vocStream.getTracks().forEach((t) => t.stop()); return; }
+        if (vocStream) { MIX.streams.push(vocStream); ctx.createMediaStreamSource(vocStream).connect(vocGain); hasVocal = true; }
+      }
+    }
+    const kb = new Float32Array(keyAn.fftSize), vb = new Float32Array(vocAn.fftSize);
+    let tick = 0;
+    const loop = () => {
+      if (MIX.ctx !== ctx) return;
+      const kdb = rms(keyAn, kb), vdb = hasVocal ? rms(vocAn, vb) : -120;
+      keyMeter.style.width = meterWidth(kdb) + '%';
+      vocMeter.style.width = meterWidth(vdb) + '%';
+      keyMeter.parentElement.classList.toggle('hot', kdb > -3);
+      vocMeter.parentElement.classList.toggle('hot', vdb > -3);
+      /* the duck: a voice at the mic, not room tone */
+      if (hasVocal && duck > 0 && (tick++ % 2 === 0)) {
+        const talking = vdb > -42;
+        const target = talking ? dbToGain(-duck) : 1;
+        bed.gain.setTargetAtTime(target, ctx.currentTime, talking ? 0.02 : 0.25);
+        if (talking !== MIX.ducked) { MIX.ducked = talking; duckBadge.classList.toggle('lit', talking); }
+      } else if (MIX.ducked) { MIX.ducked = false; bed.gain.setTargetAtTime(1, ctx.currentTime, 0.1); duckBadge.classList.remove('lit'); }
+      MIX.raf = requestAnimationFrame(loop);
+    };
+    MIX.raf = requestAnimationFrame(loop);
+  }
+  function tearDownMix() {
+    cancelAnimationFrame(MIX.raf);
+    MIX.streams.forEach((st) => st.getTracks().forEach((t) => t.stop()));
+    if (MIX.ctx) { try { MIX.ctx.close(); } catch { /* already gone */ } }
+    Object.assign(MIX, { ctx: null, keyGain: null, vocGain: null, bed: null, delay: null, dest: null, keyAn: null, vocAn: null, streams: [], ducked: false });
+    keyMeter.style.width = '0%'; vocMeter.style.width = '0%';
+    duckBadge.classList.remove('lit');
+  }
+  /* Meters run while Advanced is open and no clip is recording; a clip
+     owns the graph for its duration. */
+  function monitorInputs() {
+    if (MIX.recording) return;
+    if (advOpen && !setup.hidden) { buildMix(null).catch(() => {}); mixNote.textContent = 'Meters live'; }
+    else { tearDownMix(); mixNote.textContent = 'Meters run while Advanced is open'; }
+  }
+  [audioInSel, vocalInSel].forEach((sel) => sel.addEventListener('change', monitorInputs));
+
+  /* ---------- the picture ----------
+     Three ways to get the window, tried in order:
+       1. getDisplayMedia — the main process answers with this window.
+       2. The same request with the source id given explicitly, the way
+          Electron always allowed before display-media handlers existed.
+       3. The screen this window is on. Chromium's window capturer refuses
+          some frameless windows on some Windows drivers with "Error
+          starting video capture"; the screen capturer never does. */
+  async function grabPicture(fps, wantSystem) {
+    const errs = [];
+    const audioOpt = wantSystem ? true : false;
+    if (BRIDGE) BRIDGE.captureKind('window');
+    try { return { display: await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: audioOpt }), how: 'window' }; }
+    catch (e) { errs.push(e); }
+    try { return { display: await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps } }), how: 'window' }; }
+    catch (e) { errs.push(e); }
+    if (BRIDGE) {
+      let ids = null;
+      try { ids = await BRIDGE.captureSources(); } catch { ids = null; }
+      if (ids && ids.window) {
+        try {
+          const display = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ids.window, maxFrameRate: fps } }
+          });
+          return { display, how: 'window' };
+        } catch (e) { errs.push(e); }
+      }
+      BRIDGE.captureKind('screen');
+      try {
+        const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: audioOpt });
+        return { display, how: 'screen' };
+      } catch (e) { errs.push(e); }
+      if (ids && ids.screen) {
+        try {
+          const display = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ids.screen, maxFrameRate: fps } }
+          });
+          return { display, how: 'screen' };
+        } catch (e) { errs.push(e); }
+      }
+    }
+    throw errs[errs.length - 1] || new Error('no capture available');
+  }
+
   async function buildStream() {
     const wantSystem = videoSound === 'system' || videoSound === 'both';
-    const wantInput  = videoSound === 'input'  || videoSound === 'both';
     const Q = QUALITY[videoQuality] || QUALITY.best;
-    let display;
-    try { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: Q.fps }, audio: wantSystem }); }
-    catch { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: Q.fps } }); }
-
+    const { display, how } = await grabPicture(Q.fps, wantSystem);
+    if (how === 'screen') toast('Recording the screen — this machine cannot capture just the window');
     const tracks = [display.getVideoTracks()[0]];
     const sysTrack = wantSystem ? display.getAudioTracks()[0] : null;
-    let keyStream = null, vocStream = null;
-    if (wantInput) {
-      keyStream = await openInput(audioInput, 'keyboard input');
-      if (vocalInput && vocalInput !== audioInput) vocStream = await openInput(vocalInput, 'vocal input');
-    }
-    const keyTrack = keyStream ? keyStream.getAudioTracks()[0] : null;
-    const vocTrack = vocStream ? vocStream.getAudioTracks()[0] : null;
-    const sources = [sysTrack, keyTrack].filter(Boolean);
-
-    let ctx = null, meterTimer = 0;
-    LIVE.duckGain = null; LIVE.delay = null;
-    if (sources.length + (vocTrack ? 1 : 0) > 1 || (sources.length && audioOffset > 0)) {
-      ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
-      const dest = ctx.createMediaStreamDestination();
-      const delay = ctx.createDelay(1);
-      delay.delayTime.value = audioOffset / 1000;
-      delay.connect(dest);
-      const bedGain = ctx.createGain();        // keyboard + system: the part that ducks
-      bedGain.connect(delay);
-      sources.forEach((t) => ctx.createMediaStreamSource(new MediaStream([t])).connect(bedGain));
-      if (vocTrack) {
-        const voc = ctx.createMediaStreamSource(new MediaStream([vocTrack]));
-        voc.connect(delay);
-        /* the duck: watch the vocal level, drop the bed while it is up */
-        const an = ctx.createAnalyser();
-        an.fftSize = 512;
-        voc.connect(an);
-        const buf = new Float32Array(an.fftSize);
-        LIVE.duckDepth = duck;
-        meterTimer = setInterval(() => {
-          an.getFloatTimeDomainData(buf);
-          let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-          const dB = 20 * Math.log10(Math.sqrt(sum / buf.length) + 1e-9);
-          const talking = dB > -42;              // a voice at the mic, not room tone
-          const target = talking ? Math.pow(10, -LIVE.duckDepth / 20) : 1;
-          bedGain.gain.setTargetAtTime(target, ctx.currentTime, talking ? 0.02 : 0.25);
-        }, 20);
-      }
-      LIVE.duckGain = bedGain; LIVE.delay = delay;
-      tracks.push(dest.stream.getAudioTracks()[0]);
-    } else if (sources.length || vocTrack) {
-      tracks.push(sources[0] || vocTrack);
-    }
-    if (!sysTrack && wantSystem && !keyTrack && !vocTrack) toast('No system sound on this machine — picture only');
+    MIX.recording = true;
+    await buildMix(sysTrack);
+    const audioTrack = MIX.dest.stream.getAudioTracks()[0];
+    const hasSound = !!sysTrack || MIX.streams.length > 0;
+    if (hasSound && audioTrack) tracks.push(audioTrack);
+    else if (videoSound !== 'none') toast('No sound source could be opened — picture only');
     const stream = new MediaStream(tracks);
     const stopAll = () => {
-      clearInterval(meterTimer);
       display.getTracks().forEach((t) => t.stop());
-      [keyStream, vocStream].forEach((st) => st && st.getTracks().forEach((t) => t.stop()));
-      if (ctx) ctx.close();
-      LIVE.duckGain = null; LIVE.delay = null;
+      MIX.recording = false;
+      tearDownMix();
+      monitorInputs();
     };
     return { stream, stopAll, ended: display.getVideoTracks()[0] };
   }
@@ -1164,7 +1249,7 @@
   async function startVideo() {
     let built;
     try { built = await buildStream(); }
-    catch (err) { toast('Could not start video — ' + (err.message || err)); return; }
+    catch (err) { MIX.recording = false; monitorInputs(); toast('Could not start video — ' + (err.message || err)); return; }
     const { stream, stopAll, ended } = built;
     const hasAudio = stream.getAudioTracks().length > 0;
     const mime = (hasAudio
@@ -1382,8 +1467,9 @@
     setupbtn.setAttribute('aria-expanded', String(open));
     setupbtn.classList.toggle('on', open);
     showAdvanced(advOpen);
+    monitorInputs();
   });
-  advbtn.addEventListener('click', () => { showAdvanced(!advOpen); store({ advanced: advOpen }); });
+  advbtn.addEventListener('click', () => { showAdvanced(!advOpen); store({ advanced: advOpen }); monitorInputs(); });
 
   $('modebtn').addEventListener('click', () => { mode = mode === 'dark' ? 'light' : 'dark'; applyTheme(); });
   ksize.addEventListener('input', (e) => {
@@ -1468,7 +1554,11 @@
     markTint();
     if (BRIDGE) { try { picture = await BRIDGE.getBackdrop(); } catch { picture = null; } }
     picFace(); paintBackdrop();
+    if (Number.isFinite(+settingsCache.keyGain)) keyGainDb = Math.max(-24, Math.min(12, +settingsCache.keyGain));
+    if (Number.isFinite(+settingsCache.vocGain)) vocGainDb = Math.max(-24, Math.min(12, +settingsCache.vocGain));
+    keyGainEl.value = keyGainDb; vocGainEl.value = vocGainDb; gainFace();
     showAdvanced(settingsCache.advanced === true);
+    monitorInputs();
     if (settingsCache.velocity === 'on' || settingsCache.velocity === 'off') {
       velocity = settingsCache.velocity === 'on';
       velSel.value = settingsCache.velocity;

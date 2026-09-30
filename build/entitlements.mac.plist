@@ -15,11 +15,18 @@
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
 
+  <!-- Since 1.1.1 a video clip can carry a keyboard input and a vocal input,
+       and Advanced meters them. Under the hardened runtime that needs the
+       audio-input entitlement, and macOS needs NSMicrophoneUsageDescription
+       in Info.plist (electron-builder.yml, extendInfo) or it ends the process
+       the moment an input is opened. -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+
   <!-- Deliberately absent:
        com.apple.security.get-task-allow — a debug entitlement. Apple returns
        "status: Invalid" with no explanation if it ships (macOS Signing
        Standard §5).
-       com.apple.security.device.audio-input — Chordlight reads MIDI, never
-       audio, so it must not ask for the microphone. -->
+       com.apple.security.device.camera — nothing here uses a camera yet. -->
 </dict>
 </plist>

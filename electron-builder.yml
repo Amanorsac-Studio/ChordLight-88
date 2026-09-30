@@ -104,6 +104,12 @@ mac:
   extendInfo:
     NSHumanReadableCopyright: © 2026 Amanorsac Studio
     LSMinimumSystemVersion: '11.0'
+    # Audio inputs (keyboard, vocal) for a clip and the Mix meters. macOS
+    # kills an app that opens an input without saying why.
+    NSMicrophoneUsageDescription: Chordlight uses your keyboard and vocal inputs for the sound in a video clip, and shows their levels in Advanced › Mix.
+    # Bluetooth MIDI keyboards reach the app through CoreMIDI, but macOS
+    # still asks on first use of a Bluetooth peripheral.
+    NSBluetoothAlwaysUsageDescription: Chordlight lists Bluetooth MIDI keyboards among your MIDI inputs.
 
 dmg:
   title: Chordlight 88 ${version}
