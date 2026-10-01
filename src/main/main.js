@@ -10,13 +10,14 @@ const PRELOAD = path.join(__dirname, 'preload.js');
 
 /** @type {BrowserWindow|null} */ let mainWin = null;
 /** @type {Record<string, BrowserWindow|null>} */
-const popouts = { chord: null, number: null, keys: null };
+const popouts = { chord: null, number: null, keys: null, preview: null };
 
 /* default size and minimum size per pop-out */
 const POPOUT_SPEC = {
   chord:  { width: 430, height: 210, minWidth: 240, minHeight: 140 },
   number: { width: 400, height: 210, minWidth: 240, minHeight: 140 },
-  keys:   { width: 1320, height: 268, minWidth: 860, minHeight: 200 }
+  keys:   { width: 1320, height: 268, minWidth: 860, minHeight: 200 },
+  preview: { width: 960, height: 540, minWidth: 320, minHeight: 180 }
 };
 
 /* Last published readout, so a pop-out opened mid-song paints immediately. */
@@ -135,6 +136,8 @@ function createPopout(name, docked) {
   // Float over full-screen apps (a DAW in full screen on macOS included).
   win.setAlwaysOnTop(true, 'floating');
   if (isMac) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  if (name === 'preview') win.setAspectRatio(16 / 9);     // the clip's shape, whatever the window is dragged to
 
   win.loadFile(RENDERER, { query: { view: name } });
   win.once('ready-to-show', () => {

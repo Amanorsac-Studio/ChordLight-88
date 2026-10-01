@@ -502,6 +502,13 @@ body[data-view="number"] .eyebrow{font-size:clamp(8px,1.7vh,11px)}
 .preview.rec{border-color:#E23A55;box-shadow:0 0 0 1px #E23A55,0 12px 30px var(--shadow)}
 .preview.rec .phead .led{background:#E23A55;box-shadow:0 0 9px #E23A55}
 body.onstage .preview{display:none}
+/* the preview window */
+body[data-view="preview"] .app{display:none}
+body[data-view="preview"]{background:#000;overflow:hidden}
+.popwrap{position:fixed;inset:0;background:#000;-webkit-app-region:drag;cursor:default}
+.popwrap canvas{display:block;width:100vw;height:100vh}
+.popwrap .popctl{position:fixed;top:12px;right:12px;display:flex;gap:6px;opacity:0;transition:opacity .25s;-webkit-app-region:no-drag}
+.popwrap.hint .popctl{opacity:1}
 
 /* ============================================================
    Stage — full screen, keys edge to edge, one slim readout row

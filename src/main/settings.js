@@ -62,7 +62,7 @@ const PREF_DEFAULTS = {
 /* where the windows were */
 const STATE_DEFAULTS = {
   bounds: { main: null, chord: null, number: null, keys: null },
-  popout: { chord: false, number: false, keys: false }
+  popout: { chord: false, number: false, keys: false, preview: false }
 };
 
 const PREF_KEYS = new Set(Object.keys(PREF_DEFAULTS));

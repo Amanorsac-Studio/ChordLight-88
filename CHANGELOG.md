@@ -2,6 +2,20 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.5.2 — October 2026
+
+- **The preview detaches.** ⇱ on the Preview panel opens it in a window of
+  its own — drag it to a second screen, double-click (or ⛶, or F11) for full
+  screen, Esc or ✕ to come back. It paints the same frame from the same
+  state, so it is the clip, live, wherever you put it. It is remembered and
+  reopens with the app like the other pop-outs.
+- "Play something" is gone: an empty chord shows a dash in the app and
+  nothing at all in the clip.
+- The Stage button is gone from the title bar — the drawn clip and the
+  detached preview made it redundant.
+- The video backdrop loops regardless of the file, and restarts if the
+  system pauses it.
+
 ## 1.5.1 — September 2026
 
 - **◫ Preview** — a floating, draggable panel showing exactly what the clip

@@ -113,6 +113,9 @@
      { kind: 'video', url: file/blob URL }. `backdrop` is what is chosen. */
   let backdrop = 'theme', tint = 40, tintColor = 'black', picture = null;
   const bgVideo = $('bgvideo');
+  bgVideo.loop = true; bgVideo.muted = true;
+  bgVideo.addEventListener('ended', () => { bgVideo.currentTime = 0; bgVideo.play().catch(() => {}); });
+  bgVideo.addEventListener('pause', () => { if (document.body.dataset.backdrop === 'video') bgVideo.play().catch(() => {}); });
   const CHROMA = { green: '#00B140', blue: '#0047BB' };
   function paintBackdrop() {
     const S = root.style;
@@ -248,6 +251,245 @@
     });
   }
 
+  /* ================= the clip's look (all views) =================
+     What the drawn frame needs beyond the readout state. The main window
+     owns it and publishes it; the preview window mirrors it. */
+  const CLIP = { keys: 'bottom', title: '', font: 'inter', size: 34, color: 'text', quality: 'good' };
+  const TITLE_FONTS = {
+    inter:  { css: 'Inter, "Segoe UI", sans-serif', weight: 600 },
+    barlow: { css: '"Barlow Condensed", Inter, sans-serif', weight: 700 },
+    mono:   { css: '"JetBrains Mono", ui-monospace, monospace', weight: 600 },
+    serif:  { css: 'Georgia, "Times New Roman", serif', weight: 600 }
+  };
+  /* colours resolved at draw time from the theme, so a title follows the accent */
+  const TITLE_COLORS = {
+    text:   { label: 'Text',   pick: (T) => T.chord },
+    accent: { label: 'Accent', pick: (T) => T.acc },
+    alt:    { label: 'Alt',    pick: (T) => T.alt },
+    white:  { label: 'White',  pick: () => '#FFFFFF' },
+    gold:   { label: 'Gold',   pick: () => '#FFB53D' }
+  };
+
+  let lastPublished = null;
+
+  /* ---------- the picture ----------
+     The clip is drawn, not screen-grabbed. Every frame, the app paints its
+     own Stage layout — readouts on top, keys edge to edge below, the theme
+     or your picture behind — into an offscreen canvas from the same state
+     the windows paint from. So the clip is always the whole Chordlight, at
+     1080p (4K on a 4K screen at Best), whatever the windows are doing:
+     detached keys, a floating chord card, another app on top — none of it
+     matters, and the OS window capturer that refuses frameless windows on
+     some drivers is never asked. */
+  const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+  /* any CSS colour (the theme writes hsl()) to [r,g,b], via a scratch canvas */
+  const scratch = document.createElement('canvas').getContext('2d');
+  const rgbCache = new Map();
+  const hexRgb = (css) => {
+    css = String(css).trim();
+    if (rgbCache.has(css)) return rgbCache.get(css);
+    scratch.fillStyle = '#000'; scratch.fillStyle = css;
+    const v = scratch.fillStyle;                                   // normalised: #rrggbb or rgba(...)
+    const out = v.startsWith('#') ? hex2rgb(v) : (v.match(/[\d.]+/g) || [0, 0, 0]).slice(0, 3).map(Number);
+    rgbCache.set(css, out);
+    return out;
+  };
+  const mixRgb = (a, pa, b) => a.map((v, i) => Math.round(v * pa + b[i] * (1 - pa)));
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  /* the chord / number HTML is walked, not re-derived: plain text at the
+     big size, .sup raised and small in the accent, .slash dim */
+  const htmlRuns = (html) => {
+    const box = document.createElement('div'); box.innerHTML = html;
+    const runs = [];
+    box.childNodes.forEach((n) => {
+      if (n.nodeType === 3) runs.push({ t: n.textContent, k: 'main' });
+      else runs.push({ t: n.textContent, k: n.classList.contains('sup') ? (n.classList.contains('word') ? 'supword' : 'sup') : n.classList.contains('slash') ? 'slash' : 'main' });
+    });
+    return runs;
+  };
+
+  const FRAME = { canvas: null, ctx: null, W: 0, H: 0, pic: null, raf: 0, last: 0, fps: 30, rec: false };
+  function frameSize() {
+    const dpr = window.devicePixelRatio || 1;
+    const big = (screen.width * dpr) >= 3000 && CLIP.quality === 'best';
+    return big ? [3840, 2160] : [1920, 1080];
+  }
+  function drawFrame() {
+    const { ctx, W, H } = FRAME;
+    rgbCache.clear();
+    const st = lastPublished || {};
+    const T = {
+      void: cssVar('--void'), bg1: cssVar('--bg-1'), bg2: cssVar('--bg-2'), a2: cssVar('--a2'), a3: cssVar('--a3'), a4: cssVar('--a4'), alt: cssVar('--alt'),
+      chord: cssVar('--chord'), faint: cssVar('--text-faint'), dim: cssVar('--text-dim'), acc: cssVar('--acc-txt'),
+      w1: hexRgb(cssVar('--key-w1')), w2: hexRgb(cssVar('--key-w2')), w3: hexRgb(cssVar('--key-w3')),
+      b1: hexRgb(cssVar('--key-b1')), b2: hexRgb(cssVar('--key-b2')), b3: hexRgb(cssVar('--key-b3')),
+      klbl: cssVar('--key-lbl'), kblbl: cssVar('--key-blbl'), kline: cssVar('--key-line'), a1: cssVar('--a1')
+    };
+    const S = H / 1080;                       // everything below is drawn at 1080p and scaled
+
+    /* ---- backdrop ---- */
+    const flat = !!CHROMA[backdrop];          // chroma: no glow anywhere, it would fringe when keyed
+    const cover = (im, iw, ih) => { const r = Math.max(W / iw, H / ih), w = iw * r, h = ih * r; ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h); };
+    const tintOver = () => { ctx.fillStyle = (TINTS[tintColor] || TINTS.black).c; ctx.globalAlpha = tint / 100; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; };
+    if (flat) {
+      ctx.fillStyle = CHROMA[backdrop]; ctx.fillRect(0, 0, W, H);
+    } else if (backdrop === 'picture' && FRAME.pic) {
+      cover(FRAME.pic, FRAME.pic.width, FRAME.pic.height); tintOver();
+    } else if (backdrop === 'video' && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
+      cover(bgVideo, bgVideo.videoWidth, bgVideo.videoHeight); tintOver();
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, T.bg2); g.addColorStop(0.42, T.bg1); g.addColorStop(1, T.void);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      const rg = ctx.createRadialGradient(W / 2, -H * 0.1, 0, W / 2, -H * 0.1, W * 0.55);
+      rg.addColorStop(0, rgba(hexRgb(T.a2), 0.16)); rg.addColorStop(1, rgba(hexRgb(T.a2), 0));
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    }
+
+    /* ---- geometry ----
+       The keys block is name row + felt + keys, a quarter of the frame tall.
+       It sits at the bottom, the middle or the top; the readouts take the
+       larger of the spaces left, and the title the other. */
+    const padX = W * 0.03, keysH = Math.round(H * 0.26), nameH = Math.round(56 * S), feltH = Math.round(6 * S);
+    const blockH = nameH + 6 * S + feltH + 4 * S + keysH;
+    const pos = CLIP.keys === 'top' ? 'top' : CLIP.keys === 'middle' ? 'middle' : 'bottom';
+    const blockTop = pos === 'bottom' ? H - blockH : pos === 'top' ? Math.round(24 * S) : Math.round((H - blockH) / 2);
+    const nameTop = blockTop, feltTop = nameTop + nameH + 6 * S, keysTop = feltTop + feltH + 4 * S, keysBottom = keysTop + keysH;
+    const bigSize = Math.round(132 * S), eyeSize = Math.round(12 * S), subSize = Math.round(15 * S), titlePx = Math.round(CLIP.size * S);
+    /* readouts: above the keys unless the keys are at the top */
+    const baseline = pos === 'top' ? keysBottom + 60 * S + bigSize * 0.92 + eyeSize * 1.6 : nameTop - 22 * S;
+    /* title: the space the readouts do not use */
+    const titleY = pos === 'top' ? H - 48 * S : pos === 'middle' ? keysBottom + 40 * S + titlePx : 44 * S + titlePx;
+
+    /* ---- readouts ---- */
+    const eyebrow = (text, x, y, right) => {
+      ctx.font = `500 ${eyeSize}px "JetBrains Mono", monospace`; ctx.letterSpacing = `${0.2 * eyeSize}px`;
+      ctx.textAlign = right ? 'right' : 'left'; ctx.textBaseline = 'alphabetic';
+      const tw = ctx.measureText(text.toUpperCase()).width;
+      const dotX = right ? x - tw - 14 * S : x;
+      ctx.fillStyle = T.a3; ctx.shadowColor = T.a3; ctx.shadowBlur = flat ? 0 : 9 * S;
+      ctx.beginPath(); ctx.arc(dotX + 3 * S, y - eyeSize * 0.35, 2.6 * S, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = T.faint; ctx.fillText(text.toUpperCase(), right ? x : x + 14 * S, y);
+      ctx.letterSpacing = '0px';
+    };
+    const bigText = (html, empty, x, y, right) => {
+      if (empty) {
+        ctx.font = `500 ${Math.round(26 * S)}px Inter, "Segoe UI", sans-serif`; ctx.fillStyle = T.faint; ctx.textAlign = right ? 'right' : 'left';
+        ctx.fillText(html.replace(/<[^>]+>/g, ''), x, y); return;
+      }
+      const runs = htmlRuns(html);
+      const fontOf = (k) => k === 'main' ? `700 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
+        : k === 'slash' ? `600 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
+        : `700 ${Math.round(bigSize * 0.48)}px "Barlow Condensed", Inter, sans-serif`;
+      let total = 0;
+      runs.forEach((r) => { ctx.font = fontOf(r.k); r.w = ctx.measureText(r.t).width + (r.k === 'supword' ? bigSize * 0.16 : 0); total += r.w; });
+      let cx = right ? x - total : x;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      for (const r of runs) {
+        ctx.font = fontOf(r.k);
+        const raised = r.k.startsWith('sup');
+        ctx.fillStyle = r.k === 'slash' ? T.dim : raised ? T.acc : T.chord;
+        ctx.shadowColor = rgba(hexRgb(T.a3), 0.38); ctx.shadowBlur = flat ? 0 : raised ? 0 : 46 * S;
+        ctx.fillText(r.t, cx + (r.k === 'supword' ? bigSize * 0.16 : 0), y - (raised ? bigSize * 0.46 : 0));
+        ctx.shadowBlur = 0;
+        cx += r.w;
+      }
+    };
+    const chordEmpty = /empty/.test(st.chordClass || 'big empty'), numEmpty = /empty/.test(st.numClass || 'big empty');
+    eyebrow('Chord', padX, baseline - bigSize * 0.92, false);
+    if (!chordEmpty) bigText(st.chordHTML, false, padX, baseline, false);
+    eyebrow(st.numEyebrow || 'Number', W - padX, baseline - bigSize * 0.92, true);
+    if (!numEmpty) bigText(st.numHTML, false, W - padX, baseline, true);
+    if (st.romanText) {
+      ctx.font = `500 ${subSize}px "JetBrains Mono", monospace`; ctx.letterSpacing = `${0.1 * subSize}px`;
+      ctx.fillStyle = T.alt; ctx.textAlign = 'right'; ctx.fillText(st.romanText, W - padX, baseline + subSize * 1.5); ctx.letterSpacing = '0px';
+    }
+
+    /* ---- felt ---- */
+    const fg = ctx.createLinearGradient(0, 0, W, 0); fg.addColorStop(0, T.a1); fg.addColorStop(0.5, T.a2); fg.addColorStop(1, T.a1);
+    ctx.fillStyle = fg; ctx.globalAlpha = 0.9; ctx.shadowColor = rgba(hexRgb(T.a2), 0.4); ctx.shadowBlur = flat ? 0 : 16 * S;
+    ctx.fillRect(0, feltTop, W, feltH); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+
+    /* ---- keys ---- */
+    const ww = W / whites.length, bw = ww * 0.57, bh = keysH * 0.62;
+    const vel = new Map(st.keys || []), ring = new Map(st.ring || []), cTags = st.cTags || {};
+    const multi = (st.keys || []).length > 1, solid = st.keyLight === 'solid';
+    const shade = (v) => { const mid = velColor(v), hi = velColor(Math.min(127, v + 26)), lo = velColor(Math.max(14, v - 52)); return { mid, hi, lo }; };
+    const keyColor = (n, on, rg, black) => {
+      const v = st.velocity === false ? 43 : (on ? vel.get(n) : ring.get(n));
+      const c = shade(v);
+      if (on) return solid ? [c.mid, c.mid, c.mid] : [c.lo, c.mid, c.hi];
+      const base = black ? [T.b1, T.b2, T.b3] : [T.w1, T.w2, T.w3];
+      const p = black ? [0.62, 0.58, 0.52] : [0.5, 0.46, 0.42];
+      return solid ? [mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1])]
+        : [mixRgb(c.lo, p[0], base[0]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.hi, p[2], base[2])];
+    };
+    ctx.lineWidth = Math.max(1, S);
+    ctx.font = `500 ${Math.round(13 * S)}px "JetBrains Mono", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    let wi = 0;
+    const blacks = [];
+    for (let n = LOW; n <= HIGH; n++) {
+      if (isBlack(n)) { blacks.push([n, wi * ww - ww * 0.285]); continue; }
+      const x = wi * ww, on = vel.has(n), rg = !on && ring.has(n);
+      let stops;
+      if (on || rg) { const c = keyColor(n, on, rg, false); stops = c.map((q) => rgba(q, 1)); }
+      else stops = [rgba(T.w1, 1), rgba(T.w2, 1), rgba(T.w3, 1)];
+      const g = ctx.createLinearGradient(0, keysTop, 0, keysBottom); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.84, stops[1]); g.addColorStop(1, stops[2]);
+      ctx.fillStyle = g;
+      if (on) { const c = shade(st.velocity === false ? 43 : vel.get(n)); ctx.shadowColor = rgba(c.mid, 0.6); ctx.shadowBlur = flat ? 0 : 26 * S; }
+      ctx.fillRect(x, keysTop, ww, keysH); ctx.shadowBlur = 0;
+      ctx.strokeStyle = T.kline; ctx.strokeRect(x + 0.5, keysTop + 0.5, ww - 1, keysH - 1);
+      if (rg) { const c = shade(ring.get(n)); ctx.fillStyle = rgba(c.mid, 0.9); ctx.fillRect(x, keysTop, ww, 5 * S); }
+      if (on && multi && n % 12 === st.rootPc) {
+        ctx.fillStyle = '#04121F'; ctx.beginPath(); ctx.arc(x + ww / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2 * S; ctx.stroke(); ctx.lineWidth = Math.max(1, S);
+      }
+      if (!on && !rg && cTags[n]) { ctx.fillStyle = T.klbl; ctx.globalAlpha = 0.5; ctx.fillText(cTags[n], x + ww / 2, keysBottom - 10 * S); ctx.globalAlpha = 1; }
+      wi++;
+    }
+    for (const [n, x] of blacks) {
+      const on = vel.has(n), rg = !on && ring.has(n);
+      let stops;
+      if (on || rg) { const c = keyColor(n, on, rg, true); stops = c.map((q) => rgba(q, 1)); }
+      else stops = [rgba(T.b1, 1), rgba(T.b2, 1), rgba(T.b3, 1)];
+      const g = ctx.createLinearGradient(0, keysTop, 0, keysTop + bh); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.6, stops[1]); g.addColorStop(1, stops[2]);
+      ctx.fillStyle = g;
+      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = flat ? 0 : 6 * S; ctx.shadowOffsetY = 3 * S;
+      if (on) { const c = shade(st.velocity === false ? 43 : vel.get(n)); ctx.shadowColor = rgba(c.mid, 0.6); ctx.shadowBlur = flat ? 0 : 26 * S; ctx.shadowOffsetY = 0; }
+      ctx.fillRect(x, keysTop, bw, bh); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = rgba(T.b3, 1); ctx.strokeRect(x + 0.5, keysTop + 0.5, bw - 1, bh - 1);
+      if (rg) { const c = shade(ring.get(n)); ctx.fillStyle = rgba(c.mid, 0.9); ctx.fillRect(x, keysTop, bw, 5 * S); }
+      if (on && multi && n % 12 === st.rootPc) {
+        ctx.fillStyle = '#04121F'; ctx.beginPath(); ctx.arc(x + bw / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2 * S; ctx.stroke(); ctx.lineWidth = Math.max(1, S);
+      }
+    }
+
+    /* ---- name tags ---- */
+    ctx.font = `600 ${Math.round(15 * S)}px "JetBrains Mono", monospace`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    (st.tags || []).forEach((tag, i) => {
+      const row = i % 2, cx = centerPct.get(tag.n) / 100 * W;
+      const tw = ctx.measureText(tag.t).width + 16 * S, th = 24 * S, ty = nameTop + (row ? 26 * S : 0);
+      const g = ctx.createLinearGradient(0, ty, 0, ty + th);
+      if (tag.b) { g.addColorStop(0, '#fff'); g.addColorStop(1, T.a2); } else { g.addColorStop(0, T.a4); g.addColorStop(1, T.a3); }
+      ctx.shadowColor = rgba(hexRgb(T.a3), 0.5); ctx.shadowBlur = flat ? 0 : 16 * S;
+      ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(cx - tw / 2, ty, tw, th, 6 * S); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#04121D'; ctx.fillText(tag.t, cx, ty + th / 2 + 1);
+      const sg = ctx.createLinearGradient(0, ty + th, 0, feltTop); sg.addColorStop(0, T.a3); sg.addColorStop(1, rgba(hexRgb(T.a3), 0));
+      ctx.strokeStyle = sg; ctx.lineWidth = Math.max(1, S); ctx.beginPath(); ctx.moveTo(cx, ty + th); ctx.lineTo(cx, feltTop); ctx.stroke();
+    });
+    ctx.textBaseline = 'alphabetic';
+
+    /* ---- title ---- */
+    if (CLIP.title) {
+      const F = TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter, C = TITLE_COLORS[CLIP.color] || TITLE_COLORS.text;
+      ctx.font = `${F.weight} ${titlePx}px ${F.css}`; ctx.letterSpacing = `${(CLIP.font === 'barlow' ? 0.01 : 0.02) * titlePx}px`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = C.pick(T); ctx.shadowColor = rgba(hexRgb(T.a2), 0.35); ctx.shadowBlur = flat ? 0 : 18 * S;
+      ctx.fillText(CLIP.title, W / 2, titleY); ctx.shadowBlur = 0; ctx.letterSpacing = '0px';
+    }
+  }
   /* ================= keys pop-out ================= */
   if (VIEW === 'keys') {
     paintTheme();
@@ -261,6 +503,62 @@
         paintKeys(s);
       });
       dockButtons();
+    }
+    return;
+  }
+
+  /* ================= preview window =================
+     The drawn clip, in a window of its own — drag it to a second screen and
+     double-click (or ⛶) for full screen. It paints the same frame from the
+     same state the main window publishes. */
+  if (VIEW === 'preview') {
+    paintTheme();
+    const wrap = $('popwrap'), el = $('popframe'), pctx = el.getContext('2d', { alpha: false });
+    wrap.hidden = false;
+    const fit = () => { const dpr = window.devicePixelRatio || 1; el.width = Math.round(innerWidth * dpr); el.height = Math.round(innerHeight * dpr); };
+    addEventListener('resize', fit); fit();
+    document.fonts.load('700 132px "Barlow Condensed"').catch(() => {});
+    document.fonts.load('500 14px "JetBrains Mono"').catch(() => {});
+    let last = 0, loadingPic = '';
+    const loop = (ts) => {
+      if (ts - last >= 1000 / 30) {
+        last = ts;
+        try {
+          const [W, H] = frameSize();
+          if (!FRAME.canvas || FRAME.W !== W || FRAME.H !== H) {
+            const c = document.createElement('canvas'); c.width = W; c.height = H;
+            Object.assign(FRAME, { canvas: c, ctx: c.getContext('2d', { alpha: false }), W, H });
+          }
+          if (backdrop === 'picture' && picture && picture.kind === 'picture' && (!FRAME.pic || FRAME.pic.src !== picture.url) && loadingPic !== picture.url) {
+            loadingPic = picture.url;
+            const im = new Image(); im.onload = () => { FRAME.pic = im; }; im.src = picture.url;
+          }
+          drawFrame();
+          const w0 = el.width, h0 = el.height, r = Math.min(w0 / FRAME.W, h0 / FRAME.H), w = FRAME.W * r, h = FRAME.H * r;
+          pctx.fillStyle = '#000'; pctx.fillRect(0, 0, w0, h0);
+          pctx.drawImage(FRAME.canvas, (w0 - w) / 2, (h0 - h) / 2, w, h);
+        } catch { /* one bad frame */ }
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+    if (BRIDGE) {
+      BRIDGE.onState((s) => {
+        if (s.accent && ACCENTS[s.accent]) accent = s.accent;
+        if (s.mode) mode = s.mode;
+        if (s.clip) Object.assign(CLIP, s.clip);
+        applyBackdropState(s);
+        paintTheme();
+        lastPublished = s;
+      });
+      const full = () => BRIDGE.windowControl('fullscreen');
+      $('popfull').addEventListener('click', full);
+      $('popclose').addEventListener('click', () => BRIDGE.windowControl('close'));
+      wrap.addEventListener('dblclick', full);
+      addEventListener('keydown', (e) => { if (e.key === 'F11') { e.preventDefault(); full(); } });
+      let hintTimer = 0;
+      const hint = () => { wrap.classList.add('hint'); clearTimeout(hintTimer); hintTimer = setTimeout(() => wrap.classList.remove('hint'), 1800); };
+      addEventListener('mousemove', hint); hint();
     }
     return;
   }
@@ -411,7 +709,7 @@
     let text;
     if (!ch) {
       text = {
-        chordClass: 'big empty', chordHTML: 'Play something',
+        chordClass: 'big empty', chordHTML: '—',
         numClass: 'big empty', numHTML: '—',
         romanText: '', metaHTML: '', numEyebrow: eyebrow
       };
@@ -449,7 +747,7 @@
     }
 
     const state = Object.assign(
-      { accent, mode, keys, ring, rootPc, tags, cTags, keyLight, velocity, backdrop, tint, tintColor, keySize: +ksize.value },
+      { accent, mode, keys, ring, rootPc, tags, cTags, keyLight, velocity, backdrop, tint, tintColor, keySize: +ksize.value, clip: Object.assign({}, CLIP) },
       text
     );
 
@@ -464,7 +762,6 @@
     lastPublished = state;
     if (BRIDGE) BRIDGE.publish(state);
   }
-  let lastPublished = null;
 
   function applyTheme(persist = true) {
     paintTheme();
@@ -1179,24 +1476,9 @@
   const soundSel = $('videosound'), audioInSel = $('audioin'), vocalInSel = $('vocalin'),
         duckEl = $('duck'), duckV = $('duckv'), offsetEl = $('aoffset'), offsetV = $('aoffsetv'), qualSel = $('vquality');
   let videoSound = 'system', audioInput = '', vocalInput = '', duck = 9, audioOffset = 0, videoQuality = 'good';
-  let clipTitle = '', clipKeys = 'bottom', titleFont = 'inter', titleSize = 34, titleColor = 'text';
   const clipTitleEl = $('cliptitle'), clipKeysEl = $('clipkeys'), titleFontEl = $('titlefont'), titleSizeEl = $('titlesize'), titleSizeV = $('titlesizev');
-  const TITLE_FONTS = {
-    inter:  { css: 'Inter, "Segoe UI", sans-serif', weight: 600 },
-    barlow: { css: '"Barlow Condensed", Inter, sans-serif', weight: 700 },
-    mono:   { css: '"JetBrains Mono", ui-monospace, monospace', weight: 600 },
-    serif:  { css: 'Georgia, "Times New Roman", serif', weight: 600 }
-  };
-  /* colours resolved at draw time from the theme, so a title follows the accent */
-  const TITLE_COLORS = {
-    text:   { label: 'Text',   pick: (T) => T.chord },
-    accent: { label: 'Accent', pick: (T) => T.acc },
-    alt:    { label: 'Alt',    pick: (T) => T.alt },
-    white:  { label: 'White',  pick: () => '#FFFFFF' },
-    gold:   { label: 'Gold',   pick: () => '#FFB53D' }
-  };
-  titleFontEl.addEventListener('change', () => { titleFont = titleFontEl.value; store({ titleFont }); });
-  titleSizeEl.addEventListener('input', () => { titleSize = +titleSizeEl.value; titleSizeV.textContent = titleSize; store({ titleSize }); });
+  titleFontEl.addEventListener('change', () => { CLIP.font = titleFontEl.value; store({ titleFont: CLIP.font }); paint(); });
+  titleSizeEl.addEventListener('input', () => { CLIP.size = +titleSizeEl.value; titleSizeV.textContent = CLIP.size; store({ titleSize: CLIP.size }); paint(); });
   (function buildTitleSwatches() {
     const box = $('titleswatches');
     const preview = { text: '#EAF5FF', accent: '#4ECDE6', alt: '#B9AEFF', white: '#FFFFFF', gold: '#FFB53D' };
@@ -1204,13 +1486,13 @@
       const b = document.createElement('button');
       b.type = 'button'; b.dataset.k = k; b.title = C.label; b.setAttribute('aria-label', C.label);
       b.style.background = preview[k];
-      b.addEventListener('click', () => { titleColor = k; markTitle(); store({ titleColor }); });
+      b.addEventListener('click', () => { CLIP.color = k; markTitle(); store({ titleColor: k }); paint(); });
       box.appendChild(b);
     });
   })();
-  const markTitle = () => [...$('titleswatches').children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === titleColor)));
-  clipTitleEl.addEventListener('input', () => { clipTitle = clipTitleEl.value.trim().slice(0, 80); store({ clipTitle }); });
-  clipKeysEl.addEventListener('change', () => { clipKeys = clipKeysEl.value; store({ clipKeys }); });
+  const markTitle = () => [...$('titleswatches').children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === CLIP.color)));
+  clipTitleEl.addEventListener('input', () => { CLIP.title = clipTitleEl.value.trim().slice(0, 80); store({ clipTitle: CLIP.title }); paint(); });
+  clipKeysEl.addEventListener('change', () => { CLIP.keys = clipKeysEl.value; store({ clipKeys: CLIP.keys }); paint(); });
 
   /* Audio inputs only get names once the page has been allowed to use one,
      so both lists are (re)built after any successful capture too. */
@@ -1285,7 +1567,7 @@
     audioOffset = +offsetEl.value; offsetFace(); store({ audioOffset });
     if (MIX.delay) MIX.delay.delayTime.value = audioOffset / 1000;
   });
-  qualSel.addEventListener('change', () => { videoQuality = qualSel.value; store({ videoQuality }); });
+  qualSel.addEventListener('change', () => { videoQuality = qualSel.value; CLIP.quality = videoQuality; store({ videoQuality }); paint(); });
 
   const rawAudio = (id) => (id
     ? { deviceId: { exact: id }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
@@ -1416,7 +1698,7 @@
         format: 'chordlight', version: 1,
         app: 'Chordlight 88' + (APP_VERSION ? ' ' + APP_VERSION : ''),
         created: new Date().toISOString(),
-        title: clipTitle || base,
+        title: CLIP.title || base,
         keyCenter: keysel.value, spelling: spellsel.value, labelMode, accent,
         midi: { file: 'take.mid' },
         audio: audioBytes.length ? { file: audioFile, mime: useWav ? 'audio/wav' : AUDIO_CONTAINER.mime.split(';')[0], offsetMs, durationMs } : null
@@ -1510,224 +1792,6 @@
   }
   [audioInSel, vocalInSel].forEach((sel) => sel.addEventListener('change', monitorInputs));
 
-  /* ---------- the picture ----------
-     The clip is drawn, not screen-grabbed. Every frame, the app paints its
-     own Stage layout — readouts on top, keys edge to edge below, the theme
-     or your picture behind — into an offscreen canvas from the same state
-     the windows paint from. So the clip is always the whole Chordlight, at
-     1080p (4K on a 4K screen at Best), whatever the windows are doing:
-     detached keys, a floating chord card, another app on top — none of it
-     matters, and the OS window capturer that refuses frameless windows on
-     some drivers is never asked. */
-  const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
-  /* any CSS colour (the theme writes hsl()) to [r,g,b], via a scratch canvas */
-  const scratch = document.createElement('canvas').getContext('2d');
-  const rgbCache = new Map();
-  const hexRgb = (css) => {
-    css = String(css).trim();
-    if (rgbCache.has(css)) return rgbCache.get(css);
-    scratch.fillStyle = '#000'; scratch.fillStyle = css;
-    const v = scratch.fillStyle;                                   // normalised: #rrggbb or rgba(...)
-    const out = v.startsWith('#') ? hex2rgb(v) : (v.match(/[\d.]+/g) || [0, 0, 0]).slice(0, 3).map(Number);
-    rgbCache.set(css, out);
-    return out;
-  };
-  const mixRgb = (a, pa, b) => a.map((v, i) => Math.round(v * pa + b[i] * (1 - pa)));
-  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-
-  /* the chord / number HTML is walked, not re-derived: plain text at the
-     big size, .sup raised and small in the accent, .slash dim */
-  const htmlRuns = (html) => {
-    const box = document.createElement('div'); box.innerHTML = html;
-    const runs = [];
-    box.childNodes.forEach((n) => {
-      if (n.nodeType === 3) runs.push({ t: n.textContent, k: 'main' });
-      else runs.push({ t: n.textContent, k: n.classList.contains('sup') ? (n.classList.contains('word') ? 'supword' : 'sup') : n.classList.contains('slash') ? 'slash' : 'main' });
-    });
-    return runs;
-  };
-
-  const FRAME = { canvas: null, ctx: null, W: 0, H: 0, pic: null, raf: 0, last: 0, fps: 30, rec: false };
-  function frameSize() {
-    const dpr = window.devicePixelRatio || 1;
-    const big = (screen.width * dpr) >= 3000 && videoQuality === 'best';
-    return big ? [3840, 2160] : [1920, 1080];
-  }
-  function drawFrame() {
-    const { ctx, W, H } = FRAME;
-    rgbCache.clear();
-    const st = lastPublished || {};
-    const T = {
-      void: cssVar('--void'), bg1: cssVar('--bg-1'), bg2: cssVar('--bg-2'), a2: cssVar('--a2'), a3: cssVar('--a3'), a4: cssVar('--a4'), alt: cssVar('--alt'),
-      chord: cssVar('--chord'), faint: cssVar('--text-faint'), dim: cssVar('--text-dim'), acc: cssVar('--acc-txt'),
-      w1: hexRgb(cssVar('--key-w1')), w2: hexRgb(cssVar('--key-w2')), w3: hexRgb(cssVar('--key-w3')),
-      b1: hexRgb(cssVar('--key-b1')), b2: hexRgb(cssVar('--key-b2')), b3: hexRgb(cssVar('--key-b3')),
-      klbl: cssVar('--key-lbl'), kblbl: cssVar('--key-blbl'), kline: cssVar('--key-line'), a1: cssVar('--a1')
-    };
-    const S = H / 1080;                       // everything below is drawn at 1080p and scaled
-
-    /* ---- backdrop ---- */
-    const flat = !!CHROMA[backdrop];          // chroma: no glow anywhere, it would fringe when keyed
-    const cover = (im, iw, ih) => { const r = Math.max(W / iw, H / ih), w = iw * r, h = ih * r; ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h); };
-    const tintOver = () => { ctx.fillStyle = (TINTS[tintColor] || TINTS.black).c; ctx.globalAlpha = tint / 100; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; };
-    if (flat) {
-      ctx.fillStyle = CHROMA[backdrop]; ctx.fillRect(0, 0, W, H);
-    } else if (backdrop === 'picture' && FRAME.pic) {
-      cover(FRAME.pic, FRAME.pic.width, FRAME.pic.height); tintOver();
-    } else if (backdrop === 'video' && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
-      cover(bgVideo, bgVideo.videoWidth, bgVideo.videoHeight); tintOver();
-    } else {
-      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, T.bg2); g.addColorStop(0.42, T.bg1); g.addColorStop(1, T.void);
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      const rg = ctx.createRadialGradient(W / 2, -H * 0.1, 0, W / 2, -H * 0.1, W * 0.55);
-      rg.addColorStop(0, rgba(hexRgb(T.a2), 0.16)); rg.addColorStop(1, rgba(hexRgb(T.a2), 0));
-      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
-    }
-
-    /* ---- geometry ----
-       The keys block is name row + felt + keys, a quarter of the frame tall.
-       It sits at the bottom, the middle or the top; the readouts take the
-       larger of the spaces left, and the title the other. */
-    const padX = W * 0.03, keysH = Math.round(H * 0.26), nameH = Math.round(56 * S), feltH = Math.round(6 * S);
-    const blockH = nameH + 6 * S + feltH + 4 * S + keysH;
-    const pos = clipKeys === 'top' ? 'top' : clipKeys === 'middle' ? 'middle' : 'bottom';
-    const blockTop = pos === 'bottom' ? H - blockH : pos === 'top' ? Math.round(24 * S) : Math.round((H - blockH) / 2);
-    const nameTop = blockTop, feltTop = nameTop + nameH + 6 * S, keysTop = feltTop + feltH + 4 * S, keysBottom = keysTop + keysH;
-    const bigSize = Math.round(132 * S), eyeSize = Math.round(12 * S), subSize = Math.round(15 * S), titlePx = Math.round(titleSize * S);
-    /* readouts: above the keys unless the keys are at the top */
-    const baseline = pos === 'top' ? keysBottom + 60 * S + bigSize * 0.92 + eyeSize * 1.6 : nameTop - 22 * S;
-    /* title: the space the readouts do not use */
-    const titleY = pos === 'top' ? H - 48 * S : pos === 'middle' ? keysBottom + 40 * S + titlePx : 44 * S + titlePx;
-
-    /* ---- readouts ---- */
-    const eyebrow = (text, x, y, right) => {
-      ctx.font = `500 ${eyeSize}px "JetBrains Mono", monospace`; ctx.letterSpacing = `${0.2 * eyeSize}px`;
-      ctx.textAlign = right ? 'right' : 'left'; ctx.textBaseline = 'alphabetic';
-      const tw = ctx.measureText(text.toUpperCase()).width;
-      const dotX = right ? x - tw - 14 * S : x;
-      ctx.fillStyle = T.a3; ctx.shadowColor = T.a3; ctx.shadowBlur = flat ? 0 : 9 * S;
-      ctx.beginPath(); ctx.arc(dotX + 3 * S, y - eyeSize * 0.35, 2.6 * S, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = T.faint; ctx.fillText(text.toUpperCase(), right ? x : x + 14 * S, y);
-      ctx.letterSpacing = '0px';
-    };
-    const bigText = (html, empty, x, y, right) => {
-      if (empty) {
-        ctx.font = `500 ${Math.round(26 * S)}px Inter, "Segoe UI", sans-serif`; ctx.fillStyle = T.faint; ctx.textAlign = right ? 'right' : 'left';
-        ctx.fillText(html.replace(/<[^>]+>/g, ''), x, y); return;
-      }
-      const runs = htmlRuns(html);
-      const fontOf = (k) => k === 'main' ? `700 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
-        : k === 'slash' ? `600 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
-        : `700 ${Math.round(bigSize * 0.48)}px "Barlow Condensed", Inter, sans-serif`;
-      let total = 0;
-      runs.forEach((r) => { ctx.font = fontOf(r.k); r.w = ctx.measureText(r.t).width + (r.k === 'supword' ? bigSize * 0.16 : 0); total += r.w; });
-      let cx = right ? x - total : x;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      for (const r of runs) {
-        ctx.font = fontOf(r.k);
-        const raised = r.k.startsWith('sup');
-        ctx.fillStyle = r.k === 'slash' ? T.dim : raised ? T.acc : T.chord;
-        ctx.shadowColor = rgba(hexRgb(T.a3), 0.38); ctx.shadowBlur = flat ? 0 : raised ? 0 : 46 * S;
-        ctx.fillText(r.t, cx + (r.k === 'supword' ? bigSize * 0.16 : 0), y - (raised ? bigSize * 0.46 : 0));
-        ctx.shadowBlur = 0;
-        cx += r.w;
-      }
-    };
-    const chordEmpty = /empty/.test(st.chordClass || 'big empty');
-    eyebrow('Chord', padX, baseline - bigSize * 0.92, false);
-    bigText(st.chordHTML || 'Play something', chordEmpty, padX, baseline, false);
-    eyebrow(st.numEyebrow || 'Number', W - padX, baseline - bigSize * 0.92, true);
-    bigText(st.numHTML || '—', /empty/.test(st.numClass || 'big empty'), W - padX, baseline, true);
-    if (st.romanText) {
-      ctx.font = `500 ${subSize}px "JetBrains Mono", monospace`; ctx.letterSpacing = `${0.1 * subSize}px`;
-      ctx.fillStyle = T.alt; ctx.textAlign = 'right'; ctx.fillText(st.romanText, W - padX, baseline + subSize * 1.5); ctx.letterSpacing = '0px';
-    }
-
-    /* ---- felt ---- */
-    const fg = ctx.createLinearGradient(0, 0, W, 0); fg.addColorStop(0, T.a1); fg.addColorStop(0.5, T.a2); fg.addColorStop(1, T.a1);
-    ctx.fillStyle = fg; ctx.globalAlpha = 0.9; ctx.shadowColor = rgba(hexRgb(T.a2), 0.4); ctx.shadowBlur = flat ? 0 : 16 * S;
-    ctx.fillRect(0, feltTop, W, feltH); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
-
-    /* ---- keys ---- */
-    const ww = W / whites.length, bw = ww * 0.57, bh = keysH * 0.62;
-    const vel = new Map(st.keys || []), ring = new Map(st.ring || []), cTags = st.cTags || {};
-    const multi = (st.keys || []).length > 1, solid = st.keyLight === 'solid';
-    const shade = (v) => { const mid = velColor(v), hi = velColor(Math.min(127, v + 26)), lo = velColor(Math.max(14, v - 52)); return { mid, hi, lo }; };
-    const keyColor = (n, on, rg, black) => {
-      const v = st.velocity === false ? 43 : (on ? vel.get(n) : ring.get(n));
-      const c = shade(v);
-      if (on) return solid ? [c.mid, c.mid, c.mid] : [c.lo, c.mid, c.hi];
-      const base = black ? [T.b1, T.b2, T.b3] : [T.w1, T.w2, T.w3];
-      const p = black ? [0.62, 0.58, 0.52] : [0.5, 0.46, 0.42];
-      return solid ? [mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1])]
-        : [mixRgb(c.lo, p[0], base[0]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.hi, p[2], base[2])];
-    };
-    ctx.lineWidth = Math.max(1, S);
-    ctx.font = `500 ${Math.round(13 * S)}px "JetBrains Mono", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    let wi = 0;
-    const blacks = [];
-    for (let n = LOW; n <= HIGH; n++) {
-      if (isBlack(n)) { blacks.push([n, wi * ww - ww * 0.285]); continue; }
-      const x = wi * ww, on = vel.has(n), rg = !on && ring.has(n);
-      let stops;
-      if (on || rg) { const c = keyColor(n, on, rg, false); stops = c.map((q) => rgba(q, 1)); }
-      else stops = [rgba(T.w1, 1), rgba(T.w2, 1), rgba(T.w3, 1)];
-      const g = ctx.createLinearGradient(0, keysTop, 0, keysBottom); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.84, stops[1]); g.addColorStop(1, stops[2]);
-      ctx.fillStyle = g;
-      if (on) { const c = shade(st.velocity === false ? 43 : vel.get(n)); ctx.shadowColor = rgba(c.mid, 0.6); ctx.shadowBlur = flat ? 0 : 26 * S; }
-      ctx.fillRect(x, keysTop, ww, keysH); ctx.shadowBlur = 0;
-      ctx.strokeStyle = T.kline; ctx.strokeRect(x + 0.5, keysTop + 0.5, ww - 1, keysH - 1);
-      if (rg) { const c = shade(ring.get(n)); ctx.fillStyle = rgba(c.mid, 0.9); ctx.fillRect(x, keysTop, ww, 5 * S); }
-      if (on && multi && n % 12 === st.rootPc) {
-        ctx.fillStyle = '#04121F'; ctx.beginPath(); ctx.arc(x + ww / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2 * S; ctx.stroke(); ctx.lineWidth = Math.max(1, S);
-      }
-      if (!on && !rg && cTags[n]) { ctx.fillStyle = T.klbl; ctx.globalAlpha = 0.5; ctx.fillText(cTags[n], x + ww / 2, keysBottom - 10 * S); ctx.globalAlpha = 1; }
-      wi++;
-    }
-    for (const [n, x] of blacks) {
-      const on = vel.has(n), rg = !on && ring.has(n);
-      let stops;
-      if (on || rg) { const c = keyColor(n, on, rg, true); stops = c.map((q) => rgba(q, 1)); }
-      else stops = [rgba(T.b1, 1), rgba(T.b2, 1), rgba(T.b3, 1)];
-      const g = ctx.createLinearGradient(0, keysTop, 0, keysTop + bh); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.6, stops[1]); g.addColorStop(1, stops[2]);
-      ctx.fillStyle = g;
-      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = flat ? 0 : 6 * S; ctx.shadowOffsetY = 3 * S;
-      if (on) { const c = shade(st.velocity === false ? 43 : vel.get(n)); ctx.shadowColor = rgba(c.mid, 0.6); ctx.shadowBlur = flat ? 0 : 26 * S; ctx.shadowOffsetY = 0; }
-      ctx.fillRect(x, keysTop, bw, bh); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-      ctx.strokeStyle = rgba(T.b3, 1); ctx.strokeRect(x + 0.5, keysTop + 0.5, bw - 1, bh - 1);
-      if (rg) { const c = shade(ring.get(n)); ctx.fillStyle = rgba(c.mid, 0.9); ctx.fillRect(x, keysTop, bw, 5 * S); }
-      if (on && multi && n % 12 === st.rootPc) {
-        ctx.fillStyle = '#04121F'; ctx.beginPath(); ctx.arc(x + bw / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2 * S; ctx.stroke(); ctx.lineWidth = Math.max(1, S);
-      }
-    }
-
-    /* ---- name tags ---- */
-    ctx.font = `600 ${Math.round(15 * S)}px "JetBrains Mono", monospace`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-    (st.tags || []).forEach((tag, i) => {
-      const row = i % 2, cx = centerPct.get(tag.n) / 100 * W;
-      const tw = ctx.measureText(tag.t).width + 16 * S, th = 24 * S, ty = nameTop + (row ? 26 * S : 0);
-      const g = ctx.createLinearGradient(0, ty, 0, ty + th);
-      if (tag.b) { g.addColorStop(0, '#fff'); g.addColorStop(1, T.a2); } else { g.addColorStop(0, T.a4); g.addColorStop(1, T.a3); }
-      ctx.shadowColor = rgba(hexRgb(T.a3), 0.5); ctx.shadowBlur = flat ? 0 : 16 * S;
-      ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(cx - tw / 2, ty, tw, th, 6 * S); ctx.fill(); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#04121D'; ctx.fillText(tag.t, cx, ty + th / 2 + 1);
-      const sg = ctx.createLinearGradient(0, ty + th, 0, feltTop); sg.addColorStop(0, T.a3); sg.addColorStop(1, rgba(hexRgb(T.a3), 0));
-      ctx.strokeStyle = sg; ctx.lineWidth = Math.max(1, S); ctx.beginPath(); ctx.moveTo(cx, ty + th); ctx.lineTo(cx, feltTop); ctx.stroke();
-    });
-    ctx.textBaseline = 'alphabetic';
-
-    /* ---- title ---- */
-    if (clipTitle) {
-      const F = TITLE_FONTS[titleFont] || TITLE_FONTS.inter, C = TITLE_COLORS[titleColor] || TITLE_COLORS.text;
-      ctx.font = `${F.weight} ${titlePx}px ${F.css}`; ctx.letterSpacing = `${(titleFont === 'barlow' ? 0.01 : 0.02) * titlePx}px`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = C.pick(T); ctx.shadowColor = rgba(hexRgb(T.a2), 0.35); ctx.shadowBlur = flat ? 0 : 18 * S;
-      ctx.fillText(clipTitle, W / 2, titleY); ctx.shadowBlur = 0; ctx.letterSpacing = '0px';
-    }
-  }
   /* The frame runs for two customers: a clip being recorded (at the clip's
      rate) and the Preview panel (15 fps, enough to see the layout). Either
      keeps it alive; when both are gone the canvas is dropped. */
@@ -1754,8 +1818,8 @@
     try {
       await document.fonts.load(`700 ${Math.round(132 * H / 1080)}px "Barlow Condensed"`);
       await document.fonts.load('500 14px "JetBrains Mono"');
-      const F = TITLE_FONTS[titleFont] || TITLE_FONTS.inter;
-      await document.fonts.load(`${F.weight} ${Math.round(titleSize * H / 1080)}px ${F.css}`);
+      const F = TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter;
+      await document.fonts.load(`${F.weight} ${Math.round(CLIP.size * H / 1080)}px ${F.css}`);
     } catch { /* system fonts then */ }
     if (backdrop === 'picture' && picture && picture.kind === 'picture' && (!FRAME.pic || FRAME.pic.src !== picture.url)) {
       await new Promise((ok) => { const im = new Image(); im.onload = () => { FRAME.pic = im; ok(); }; im.onerror = () => ok(); im.src = picture.url; });
@@ -1794,6 +1858,12 @@
   }
   previewBtn.addEventListener('click', () => showPreview(!PREVIEW.on));
   $('previewclose').addEventListener('click', () => showPreview(false));
+  $('previewpop').addEventListener('click', async () => {
+    if (!BRIDGE) { toast('Detaching needs the app, not the browser build'); return; }
+    const r = PREVIEW.box.getBoundingClientRect();
+    const open = await BRIDGE.togglePopout('preview', { width: Math.max(640, r.width), height: Math.max(360, r.width * 9 / 16), x: window.screenX + r.left, y: window.screenY + r.top });
+    if (open) showPreview(false);
+  });
   $('previewsize').addEventListener('click', () => {
     PREVIEW.size = PREVIEW.size === 360 ? 480 : PREVIEW.size === 480 ? 720 : 360;
     sizePreview();
@@ -1935,8 +2005,7 @@
   else document.addEventListener('fullscreenchange', () => onStage(!!document.fullscreenElement));
   window.addEventListener('mousemove', () => { if (document.body.classList.contains('onstage')) hint(); });
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'F11') { e.preventDefault(); toggleStage(); }
-    else if (e.key === 'Escape' && document.body.classList.contains('onstage')) toggleStage();
+    if (e.key === 'Escape' && document.body.classList.contains('onstage')) toggleStage();
   });
 
   /* ================= backdrop ================= */
@@ -2006,7 +2075,7 @@
       numEyebrow.textContent = open
         ? 'Number · in its own window'
         : 'Number · key of ' + keysel.value;
-    } else {
+    } else if (which === 'keys') {
       $('keyeyebrow').textContent = open ? 'Keys · in their own window' : 'Keys · 88 · A0 — C8';
     }
   }
@@ -2179,16 +2248,16 @@
     if (Number.isFinite(+settingsCache.audioOffset)) audioOffset = Math.max(0, Math.min(300, +settingsCache.audioOffset));
     offsetEl.value = audioOffset; offsetFace();
     if (QUALITY[settingsCache.videoQuality]) videoQuality = settingsCache.videoQuality;
-    qualSel.value = videoQuality;
+    qualSel.value = videoQuality; CLIP.quality = videoQuality;
     alsoMidi = settingsCache.alsoMidi === true; alsoWav = settingsCache.alsoWav === true; alsoPack = settingsCache.alsoPack === true; markAlso();
-    if (typeof settingsCache.clipTitle === 'string') { clipTitle = settingsCache.clipTitle.slice(0, 80); clipTitleEl.value = clipTitle; }
-    if (['bottom', 'middle', 'top'].includes(settingsCache.clipKeys)) clipKeys = settingsCache.clipKeys;
-    clipKeysEl.value = clipKeys;
-    if (TITLE_FONTS[settingsCache.titleFont]) titleFont = settingsCache.titleFont;
-    titleFontEl.value = titleFont;
-    if (Number.isFinite(+settingsCache.titleSize)) titleSize = Math.max(18, Math.min(140, +settingsCache.titleSize));
-    titleSizeEl.value = titleSize; titleSizeV.textContent = titleSize;
-    if (TITLE_COLORS[settingsCache.titleColor]) titleColor = settingsCache.titleColor;
+    if (typeof settingsCache.clipTitle === 'string') { CLIP.title = settingsCache.clipTitle.slice(0, 80); clipTitleEl.value = CLIP.title; }
+    if (['bottom', 'middle', 'top'].includes(settingsCache.clipKeys)) CLIP.keys = settingsCache.clipKeys;
+    clipKeysEl.value = CLIP.keys;
+    if (TITLE_FONTS[settingsCache.titleFont]) CLIP.font = settingsCache.titleFont;
+    titleFontEl.value = CLIP.font;
+    if (Number.isFinite(+settingsCache.titleSize)) CLIP.size = Math.max(18, Math.min(140, +settingsCache.titleSize));
+    titleSizeEl.value = CLIP.size; titleSizeV.textContent = CLIP.size;
+    if (TITLE_COLORS[settingsCache.titleColor]) CLIP.color = settingsCache.titleColor;
     markTitle();
     fmtBadge.textContent = CONTAINER.label;
     fmtBadge.title = CONTAINER.ext === 'mp4' ? 'This machine records straight to MP4' : 'This machine cannot write MP4 — clips are WebM';
@@ -2224,7 +2293,7 @@
       [...$('labelseg').children].forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.mode === labelMode)));
     }
     if (settingsCache.popout) {
-      for (const name of ['chord', 'number', 'keys']) {
+      for (const name of ['chord', 'number', 'keys', 'preview']) {
         const b = document.querySelector(`[data-pop="${name}"]`);
         if (b && settingsCache.popout[name]) markPop(b, true);
       }
