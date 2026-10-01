@@ -8,6 +8,11 @@ Written for the person using the app, not for the commit log.
   name, so the app took it for the same video), and a new picture could
   linger in the clip's cached background. Every choice is now a fresh load,
   in the window, the pop-outs, the preview and the clip.
+- About: the privacy note now says what the build actually does — the two
+  licence calls to amanorsac.studio in the licensed build, none in the
+  unlicensed one.
+- This release ships unlicensed (LICENSED_PRODUCT = false): no activation
+  screen and no network requests, until the product is in the store catalogue.
 
 ## 2.0.0 — October 2026
 

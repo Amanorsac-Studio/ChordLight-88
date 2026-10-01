@@ -2224,6 +2224,7 @@
     LIC = st || LIC;
     if (LIC.free) {
       aboutLic.textContent = 'Ships unlicensed — no activation, no account';
+      $('privacynote').textContent = 'Chordlight makes no network requests of any kind. It never reads your sessions or presets, never sends audio or MIDI anywhere, and contains no analytics or telemetry. Updates are handled by Amanorsac Hub, not by this app.';
       licRow.hidden = true; actScrim.hidden = true; licBadge.hidden = true;
       return;
     }

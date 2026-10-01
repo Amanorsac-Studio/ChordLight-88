@@ -6,8 +6,11 @@ const settings = require('./settings');
 const license = require('./license');
 
 /* Chordlight is a licensed product (Master Standard §3): one key, two
-   computers, verified against the studio's server. */
-const LICENSED_PRODUCT = true;
+   computers, verified against the studio's server. Set to false for the
+   unlicensed build — no activation screen, no licence code reachable, no
+   network requests at all. Flip back to true once the product exists in the
+   store catalogue and A1–A12 have passed. */
+const LICENSED_PRODUCT = false;
 
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer', 'index.html');
