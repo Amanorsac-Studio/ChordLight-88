@@ -2,6 +2,17 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.5.4 — October 2026
+
+- **The preview keeps up.** The frame was being repainted from scratch
+  thirty times a second — 88 gradient keys, blurred glows, theme look-ups —
+  in the main window and again in the preview window. It is now five cached
+  layers (background, text, white keys, black keys, and the lit keys and
+  name tags on top), and nothing is redrawn until a key or a word changes.
+  A held chord costs nothing; the recorder is still fed a frame four times
+  a second so a still picture stays a picture. A video backdrop is the one
+  thing that still moves every frame, and it is a single draw.
+
 ## 1.5.3 — October 2026
 
 - Fix: ⇱ on the Preview panel opened the window and closed it again in the
