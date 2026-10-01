@@ -562,66 +562,6 @@
     return;
   }
 
-  /* ================= preview window =================
-     The drawn clip, in a window of its own — drag it to a second screen and
-     double-click (or ⛶) for full screen. It paints the same frame from the
-     same state the main window publishes. */
-  if (VIEW === 'preview') {
-    paintTheme();
-    const wrap = $('popwrap'), el = $('popframe'), pctx = el.getContext('2d', { alpha: false });
-    wrap.hidden = false;
-    let resized = true;
-    const fit = () => { const dpr = window.devicePixelRatio || 1; el.width = Math.round(innerWidth * dpr); el.height = Math.round(innerHeight * dpr); resized = true; };
-    addEventListener('resize', fit); fit();
-    document.fonts.load('700 132px "Barlow Condensed"').then(() => { FRAME.key = ''; }).catch(() => {});
-    document.fonts.load('500 14px "JetBrains Mono"').catch(() => {});
-    let last = 0, loadingPic = '';
-    const loop = (ts) => {
-      if (ts - last >= 1000 / 30) {
-        last = ts;
-        try {
-          const [W, H] = frameSize();
-          if (!FRAME.canvas || FRAME.W !== W || FRAME.H !== H) {
-            const c = document.createElement('canvas'); c.width = W; c.height = H;
-            Object.assign(FRAME, { canvas: c, ctx: c.getContext('2d', { alpha: false }), W, H });
-          }
-          if (backdrop === 'picture' && picture && picture.kind === 'picture' && (!FRAME.pic || FRAME.pic.src !== picture.url) && loadingPic !== picture.url) {
-            loadingPic = picture.url;
-            const im = new Image(); im.onload = () => { FRAME.pic = im; FRAME.key = ''; }; im.src = picture.url;
-          }
-          const drew = drawFrame();
-          if (drew || resized) {
-            resized = false;
-            const w0 = el.width, h0 = el.height, r = Math.min(w0 / FRAME.W, h0 / FRAME.H), w = FRAME.W * r, h = FRAME.H * r;
-            pctx.fillStyle = '#000'; pctx.fillRect(0, 0, w0, h0);
-            pctx.drawImage(FRAME.canvas, (w0 - w) / 2, (h0 - h) / 2, w, h);
-          }
-        } catch { /* one bad frame */ }
-      }
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
-    if (BRIDGE) {
-      BRIDGE.onState((s) => {
-        if (s.accent && ACCENTS[s.accent]) accent = s.accent;
-        if (s.mode) mode = s.mode;
-        if (s.clip) Object.assign(CLIP, s.clip);
-        applyBackdropState(s);
-        paintTheme();
-        lastPublished = s;
-      });
-      const full = () => BRIDGE.windowControl('fullscreen');
-      $('popfull').addEventListener('click', full);
-      $('popclose').addEventListener('click', () => BRIDGE.windowControl('close'));
-      wrap.addEventListener('dblclick', full);
-      addEventListener('keydown', (e) => { if (e.key === 'F11') { e.preventDefault(); full(); } });
-      let hintTimer = 0;
-      const hint = () => { wrap.classList.add('hint'); clearTimeout(hintTimer); hintTimer = setTimeout(() => wrap.classList.remove('hint'), 1800); };
-      addEventListener('mousemove', hint); hint();
-    }
-    return;
-  }
-
   /* ================= naming ================= */
   function useFlats() {
     const m = spellsel.value;
@@ -1923,12 +1863,6 @@
   }
   previewBtn.addEventListener('click', () => showPreview(!PREVIEW.on));
   $('previewclose').addEventListener('click', () => showPreview(false));
-  $('previewpop').addEventListener('click', async () => {
-    if (!BRIDGE) { toast('Detaching needs the app, not the browser build'); return; }
-    const r = PREVIEW.box.getBoundingClientRect();
-    const open = await BRIDGE.togglePopout('preview', { width: Math.max(640, r.width), height: Math.max(360, r.width * 9 / 16), x: window.screenX + r.left, y: window.screenY + r.top });
-    if (open) showPreview(false);
-  });
   $('previewsize').addEventListener('click', () => {
     PREVIEW.size = PREVIEW.size === 360 ? 480 : PREVIEW.size === 480 ? 720 : 360;
     sizePreview();
@@ -2358,7 +2292,7 @@
       [...$('labelseg').children].forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.mode === labelMode)));
     }
     if (settingsCache.popout) {
-      for (const name of ['chord', 'number', 'keys', 'preview']) {
+      for (const name of ['chord', 'number', 'keys']) {
         const b = document.querySelector(`[data-pop="${name}"]`);
         if (b && settingsCache.popout[name]) markPop(b, true);
       }

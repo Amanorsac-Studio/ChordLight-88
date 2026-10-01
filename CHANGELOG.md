@@ -2,6 +2,12 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.5.5 — October 2026
+
+- The detachable preview window is withdrawn: a second window painting the
+  frame lagged on real hardware. The Preview panel stays — drag it, three
+  sizes, red while recording.
+
 ## 1.5.4 — October 2026
 
 - **The preview keeps up.** The frame was being repainted from scratch

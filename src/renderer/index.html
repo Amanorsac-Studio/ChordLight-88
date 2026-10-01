@@ -285,7 +285,6 @@
     <div class="phead" id="previewhead">
       <span class="eyebrow"><span class="led"></span><span id="previewlabel">Clip preview</span></span>
       <button class="btn icon" type="button" id="previewsize" title="Smaller / bigger">⤢</button>
-      <button class="btn icon" type="button" id="previewpop" title="Open the preview in its own window — drag it to another screen, double-click for full screen">⇱</button>
       <button class="btn icon" type="button" id="previewclose" aria-label="Close the preview">✕</button>
     </div>
     <canvas id="previewcanvas" width="960" height="540"></canvas>
@@ -305,15 +304,6 @@
   </section>
 
 </div>
-
-  <!-- the preview window: nothing but the drawn clip -->
-  <div class="popwrap" id="popwrap" hidden>
-    <canvas id="popframe" width="1920" height="1080"></canvas>
-    <div class="popctl">
-      <button class="btn icon" type="button" id="popfull" title="Full screen (double-click the picture, or F11)">⛶</button>
-      <button class="btn icon" type="button" id="popclose" title="Close">✕</button>
-    </div>
-  </div>
 
   <div class="scrim" id="about" hidden>
     <section class="aboutbox raised" role="dialog" aria-modal="true" aria-labelledby="abouttitle">
