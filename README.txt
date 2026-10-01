@@ -1,4 +1,4 @@
-CHORDLIGHT 88 1.5.2
+CHORDLIGHT 88 1.5.3
 Amanorsac Studio · amanorsac.studio
 
 
@@ -11,8 +11,8 @@ same keyboard.
 
 INSTALLING
 
-Windows    Run Chordlight88-1.5.2-Windows.exe and follow the installer.
-macOS      Open Chordlight88-1.5.2-macOS.dmg and drag Chordlight 88 to
+Windows    Run Chordlight88-1.5.3-Windows.exe and follow the installer.
+macOS      Open Chordlight88-1.5.3-macOS.dmg and drag Chordlight 88 to
            Applications.
 
 

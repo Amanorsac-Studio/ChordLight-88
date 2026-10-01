@@ -2,6 +2,12 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.5.3 — October 2026
+
+- Fix: ⇱ on the Preview panel opened the window and closed it again in the
+  same click (two handlers on one button), so the preview never left the
+  main window. One handler now; the panel hides as the window opens.
+
 ## 1.5.2 — October 2026
 
 - **The preview detaches.** ⇱ on the Preview panel opens it in a window of
