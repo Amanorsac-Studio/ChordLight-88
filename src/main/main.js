@@ -285,7 +285,10 @@ const dataUrl = (file) => {
 const describeBackdrop = (file) => {
   const ext = path.extname(file).slice(1).toLowerCase();
   if (PIC_MIME[ext]) return { kind: 'picture', url: dataUrl(file) };
-  return { kind: 'video', url: require('url').pathToFileURL(file).href, mime: VID_MIME[ext] || 'video/mp4' };
+  /* the file keeps its name from one choice to the next, so the URL carries
+     the file's own time — a new video is a new URL, never the cached one */
+  let stamp = 0; try { stamp = Math.round(fs.statSync(file).mtimeMs); } catch { /* fine */ }
+  return { kind: 'video', url: require('url').pathToFileURL(file).href + '?t=' + stamp, mime: VID_MIME[ext] || 'video/mp4' };
 };
 async function clearBackdrops() {
   await fs.promises.mkdir(settings.BACKDROP_DIR, { recursive: true });

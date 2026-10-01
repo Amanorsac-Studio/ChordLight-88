@@ -129,10 +129,12 @@
       : CHROMA[backdrop] ? backdrop : 'theme';
     document.body.dataset.backdrop = mode;
     if (mode === 'video') {
-      if (bgVideo.getAttribute('src') !== picture.url) { bgVideo.src = picture.url; bgVideo.load(); }
+      if (bgVideo.dataset.src !== picture.url) { bgVideo.dataset.src = picture.url; bgVideo.src = picture.url; bgVideo.load(); }
       bgVideo.play().catch(() => {});
-    } else {
-      if (!bgVideo.paused) bgVideo.pause();
+    } else if (bgVideo.dataset.src) {
+      /* let the old video go completely — a paused decoder would still hold
+         its last frame, and show it again if the video came back */
+      bgVideo.pause(); bgVideo.removeAttribute('src'); bgVideo.load(); delete bgVideo.dataset.src;
     }
   }
   /* pop-outs: the picture itself is fetched once, not published with every note */
@@ -146,7 +148,7 @@
       BRIDGE.getBackdrop().then((url) => { picture = url; paintBackdrop(); }).catch(() => {});
     }
     if (s.pictureChanged && BRIDGE) {
-      BRIDGE.getBackdrop().then((url) => { picture = url; paintBackdrop(); }).catch(() => {});
+      BRIDGE.getBackdrop().then((url) => { picture = url; FRAME.pic = null; FRAME.key = ''; paintBackdrop(); }).catch(() => {});
     }
     paintBackdrop();
   }
@@ -2110,7 +2112,8 @@
       backdrop = picture.kind; backdropSel.value = backdrop;
       store({ backdrop });
       picFace(); paintBackdrop();
-      FRAME.pic = null; if (PREVIEW.on || FRAME.rec) ensureFrame();
+      FRAME.pic = null; FRAME.key = ''; if (LAYER.bg) LAYER.bg.key = '';
+      if (PREVIEW.on || FRAME.rec) ensureFrame();
       /* the pop-outs fetch the new picture themselves */
       if (BRIDGE) BRIDGE.publish(Object.assign({}, lastPublished || {}, { backdrop, tint, tintColor, pictureChanged: true }));
       paint();

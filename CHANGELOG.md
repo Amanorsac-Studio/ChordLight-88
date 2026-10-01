@@ -2,6 +2,13 @@
 
 Written for the person using the app, not for the commit log.
 
+## 2.0.1 — October 2026
+
+- Fix: choosing a new backdrop video left the old one playing (same file
+  name, so the app took it for the same video), and a new picture could
+  linger in the clip's cached background. Every choice is now a fresh load,
+  in the window, the pop-outs, the preview and the clip.
+
 ## 2.0.0 — October 2026
 
 - **Chordlight is now a licensed product.** It asks for your licence key the
