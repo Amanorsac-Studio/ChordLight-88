@@ -26,6 +26,7 @@
       <button type="button" data-mode="off" aria-pressed="false">Off</button>
     </div>
     <div class="tbstat"><span class="led"></span><span id="tbport">Scanning…</span></div>
+    <span class="badge warn" id="licbadge" hidden title="The licence has not been refreshed for two days — connect to the internet soon">Connect soon</span>
     <div class="recgroup push" role="group" aria-label="Recording">
       <button class="btn" id="recbtn" type="button" aria-pressed="false" title="Record the MIDI you play to a .mid file">● Rec</button>
       <button class="btn" id="keepbtn" type="button" title="Save the last five minutes you played, even without pressing Rec">Keep</button>
@@ -207,6 +208,14 @@
         <div class="swatches" id="titleswatches" role="group" aria-label="Title colour"></div>
       </div>
       <div class="grp">
+        <label class="fld" for="cliptrail">Chord trail</label>
+        <select id="cliptrail" title="The chords before this one, climbing away from the keys, each smaller and fainter">
+          <option value="0">Off</option>
+          <option value="2">Last 2</option>
+          <option value="4">Last 4</option>
+        </select>
+      </div>
+      <div class="grp">
         <label class="fld" for="clipkeys">Keys in the clip</label>
         <select id="clipkeys">
           <option value="bottom">Bottom</option>
@@ -238,6 +247,18 @@
       <div class="grp">
         <label class="fld">Tint colour</label>
         <div class="swatches" id="tintswatches" role="group" aria-label="Tint colour"></div>
+      </div>
+      <div class="grp">
+        <label class="fld" for="plate">Readout plate</label>
+        <select id="plate" title="A panel behind the chord, the number and the title, so they read over any picture or video">
+          <option value="off">Off</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="platealpha">Plate strength <span class="rv" id="platealphav">55%</span></label>
+        <input type="range" id="platealpha" min="20" max="100" step="5" value="55">
       </div>
       <span class="badge" id="picbadge" hidden>No picture yet</span>
     </div>
@@ -305,6 +326,32 @@
 
 </div>
 
+  <!-- Activation (License Integration Standard §7): shown until a proof verifies -->
+  <div class="scrim" id="activate" hidden>
+    <section class="aboutbox raised" role="dialog" aria-modal="true" aria-labelledby="acttitle">
+      <div class="lockup">
+        <div class="bars" aria-hidden="true">
+          <i style="height:9px"></i><i style="height:17px"></i><i style="height:25px"></i><i style="height:14px"></i><i style="height:21px"></i><i style="height:8px"></i>
+        </div>
+        <div>
+          <h2 id="acttitle">Chordlight 88</h2>
+          <p class="lockupsub">Amanorsac Studio</p>
+        </div>
+      </div>
+      <p class="aboutnote">Enter the licence key from your account. One key covers two computers; you can move it yourself with Deactivate this device, in About.</p>
+      <label class="fld" for="keyinput">Licence key</label>
+      <div class="keyrow">
+        <input type="text" id="keyinput" class="keyinput" maxlength="19" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" autocapitalize="characters">
+        <button class="btn on" type="button" id="activatebtn">Activate</button>
+      </div>
+      <p class="actmsg" id="actmsg" role="status" aria-live="polite"></p>
+      <div class="aboutlinks">
+        <button class="btn" type="button" data-link="https://amanorsac.studio/my-apps">Find your key — My Apps</button>
+        <button class="btn" type="button" data-link="mailto:hello@amanorsac.studio">hello@amanorsac.studio</button>
+      </div>
+    </section>
+  </div>
+
   <div class="scrim" id="about" hidden>
     <section class="aboutbox raised" role="dialog" aria-modal="true" aria-labelledby="abouttitle">
       <button class="btn closebtn" type="button" id="aboutclose" aria-label="Close">✕</button>
@@ -321,7 +368,7 @@
 
       <dl class="factlist">
         <dt>Version</dt><dd id="aboutversion">—</dd>
-        <dt>Licence</dt><dd id="aboutlicence">Ships unlicensed — no activation, no account</dd>
+        <dt>Licence</dt><dd id="aboutlicence">—</dd>
         <dt>Runtime</dt><dd id="aboutruntime">—</dd>
         <dt>Preferences</dt><dd id="aboutprefs">—</dd>
       </dl>
@@ -332,6 +379,11 @@
         Updates are handled by Amanorsac Hub, not by this app.
       </p>
 
+      <div class="aboutlinks" id="licencerow" hidden>
+        <button class="btn" type="button" id="deactivate">Deactivate this device</button>
+        <button class="btn" type="button" data-link="https://amanorsac.studio/my-apps">My Apps</button>
+        <span class="aboutmsg" id="aboutlicmsg"></span>
+      </div>
       <div class="aboutlinks">
         <button class="btn" type="button" data-link="https://amanorsac.studio/legal">Terms &amp; EULA</button>
         <button class="btn" type="button" data-link="https://amanorsac.studio/privacy">Privacy</button>

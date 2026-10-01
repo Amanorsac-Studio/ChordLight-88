@@ -34,6 +34,9 @@ Amanorsac Studio · Windows and macOS · Electron.
   your own picture or video as the backdrop with a tint over it, or chroma green/blue for keying.
 - **Video with sound** — system sound, a keyboard input, a vocal input, or all three
   mixed; the keys duck under your voice by as many dB as you choose.
+- **Licensed** — one key, two computers, verified against the studio's licence server
+  per the Amanorsac License Integration Standard; 30 days offline grace; Deactivate
+  this device in About. The only network requests the app makes are the two licence calls.
 - **Shared MIDI** — ports are never opened exclusively, so a DAW or Kontakt can hold
   the same controller at the same time. Virtual cables (loopMIDI, LoopBe, IAC) appear
   like any hardware port, and hot-plugged devices show up without a restart.

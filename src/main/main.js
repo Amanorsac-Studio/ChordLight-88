@@ -3,6 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const { app, BrowserWindow, ipcMain, shell, screen, session, desktopCapturer } = require('electron');
 const settings = require('./settings');
+const license = require('./license');
+
+/* Chordlight is a licensed product (Master Standard §3): one key, two
+   computers, verified against the studio's server. */
+const LICENSED_PRODUCT = true;
 
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer', 'index.html');
@@ -381,8 +386,19 @@ ipcMain.handle('app:info', () => ({
   electron: process.versions.electron,
   chrome: process.versions.chrome,
   preferencesFile: settings.PREF_FILE,
-  windowStateFile: settings.STATE_FILE
+  windowStateFile: settings.STATE_FILE,
+  licensed: LICENSED_PRODUCT,
+  licenseFolder: license.stateDir()
 }));
+
+/* ------------------------------------------------------------------ *
+ * Licensing — the renderer asks, the main process answers; the only
+ * network requests this product makes are the two in license.js.
+ * ------------------------------------------------------------------ */
+ipcMain.handle('license:status', () => (LICENSED_PRODUCT ? license.status() : { licensed: true, free: true }));
+ipcMain.handle('license:activate', (_e, key) => (LICENSED_PRODUCT ? license.activate(key, false) : { licensed: true, free: true }));
+ipcMain.handle('license:deactivate', () => (LICENSED_PRODUCT ? license.deactivate() : { licensed: true, free: true }));
+license.onChange((st) => sendToMain('license:changed', st));
 
 /* The About screen's links. Only the studio's own pages and its support
    address are ever opened, and only in the user's real browser. */
@@ -390,6 +406,7 @@ const ALLOWED_LINKS = new Set([
   'https://amanorsac.studio',
   'https://amanorsac.studio/legal',
   'https://amanorsac.studio/privacy',
+  'https://amanorsac.studio/my-apps',
   'mailto:hello@amanorsac.studio'
 ]);
 ipcMain.on('open:external', (_e, url) => {
@@ -441,6 +458,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     allowSelfCapture();
+    if (LICENSED_PRODUCT) license.start();
     if (!isMac) openFile(fileFromArgv(process.argv));
     createMainWindow();
 

@@ -2,6 +2,35 @@
 
 Written for the person using the app, not for the commit log.
 
+## 2.0.0 — October 2026
+
+- **Chordlight is now a licensed product.** It asks for your licence key the
+  first time it opens — the key is under My Apps at amanorsac.studio — and
+  one key covers two computers. Once activated it keeps working for 30 days
+  without the internet, refreshing quietly whenever it is online. About
+  shows the licence and has **Deactivate this device** for moving to a new
+  computer.
+- Licensing follows the Amanorsac License Integration Standard to the
+  letter: the server's proof is verified with the studio's public key before
+  anything is unlocked; the key and proof are stored encrypted with the
+  operating system's key store, in the machine-state folder. The two
+  licence calls are the only network requests the app makes. There is no
+  master key and no override in the app.
+- Window positions on Windows moved from the roaming profile to
+  %LOCALAPPDATA%, per the File & Data Conventions; the move is automatic.
+
+## 1.6.0 — October 2026
+
+- **Readout plate** — Advanced › Look › Readout plate: Off, Dark or Light,
+  with a strength slider. A panel behind the chord, the number and the
+  title, so they read over any picture or video. Light turns the text to
+  dark ink.
+- **Chord trail** — Advanced › Video › Chord trail: Off, Last 2 or Last 4.
+  The chord you are on stays big; the ones before it climb away from the
+  keys, each smaller and fainter, and the number side mirrors it — a 2-5-1
+  in one glance. A chord enters the trail only once it has held for a third
+  of a second, so a rolled chord's first note never leaves a mark.
+
 ## 1.5.5 — October 2026
 
 - The detachable preview window is withdrawn: a second window painting the

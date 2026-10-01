@@ -1,4 +1,4 @@
-CHORDLIGHT 88 1.5.5
+CHORDLIGHT 88 2.0.0
 Amanorsac Studio · amanorsac.studio
 
 
@@ -11,8 +11,8 @@ same keyboard.
 
 INSTALLING
 
-Windows    Run Chordlight88-1.5.5-Windows.exe and follow the installer.
-macOS      Open Chordlight88-1.5.5-macOS.dmg and drag Chordlight 88 to
+Windows    Run Chordlight88-2.0.0-Windows.exe and follow the installer.
+macOS      Open Chordlight88-2.0.0-macOS.dmg and drag Chordlight 88 to
            Applications.
 
 
@@ -32,9 +32,12 @@ macOS      ~/Documents/Amanorsac Studio/Chordlight 88/
 Uninstalling does not delete these.
 
 
-NO ACTIVATION
+ACTIVATION
 
-There is no key and no account. It never connects to the internet.
+Open Chordlight 88 and paste the licence key from your account at
+amanorsac.studio/my-apps. One key covers two computers, and you can move
+it yourself with Deactivate This Device, in About. Once activated it
+keeps working for 30 days without the internet.
 
 
 IF IT DOES NOT SEE YOUR KEYBOARD
@@ -53,7 +56,8 @@ UNINSTALLING
 Windows    Settings > Apps > Chordlight 88 > Uninstall
 macOS      Drag /Applications/Chordlight 88.app to the Bin, then delete
            ~/Library/Application Support/Amanorsac Studio/Chordlight 88/
-           if you want the window positions gone too.
+           if you want the window positions and the licence gone too.
+           Deactivate this device first if you are moving to a new Mac.
 
 
 LICENCE AND PRIVACY

@@ -101,12 +101,9 @@ name to a filename and owns the folder, so no renderer path ever reaches disk.
 
 ## Nothing is encrypted, because nothing needs to be
 
-The only encryption the standards call for is R7 of the License Integration
-Standard — the licence key and proof under DPAPI or Keychain. Chordlight ships
-unlicensed: there is no key, no proof and no device id, so there is nothing to
-protect and no encryption code to get wrong. Preferences and recordings are the
-user's own plain files. If the product becomes paid, R7 applies from the first
-licensed build.
+(Superseded at 2.0.0 — see "Licensed, from 2.0.0" below.) Through 1.6 Chordlight
+shipped unlicensed: no key, no proof, no device id, nothing to encrypt.
+Preferences and recordings are, and remain, the user's own plain files.
 
 ## The installer follows the Installer & Packaging Standard, as far as NSIS goes
 
@@ -184,3 +181,26 @@ and recorded from there. One drawing, always complete, at a fixed 1080p or
 4K regardless of window size, never showing anything that is not Chordlight.
 The cost is a second renderer for the keys and the readouts, kept in one
 function beside the DOM one and fed by the same numbers.
+
+## Licensed, from 2.0.0 — and why there is no master key
+
+Chordlight is paid from 2.0.0, so the License Integration Standard applies in
+full. src/main/license.js is a port of the reference client to Electron: the
+two server calls through Node's fetch, the proof verified with Node's crypto
+(ECDSA P-256, SHA-256, raw r‖s, over the body bytes exactly as received), the
+key and proof stored through Electron's safeStorage (DPAPI on Windows, the
+Keychain on macOS) in the machine-state folder, hourly heartbeat, 30-day
+grace, deactivate. The interface follows one flag over IPC.
+
+A "master key" baked into the app was asked for and declined. Anything in
+the binary is in the hands of anyone with a hex editor, and the standard's
+whole model is that nothing on the customer's machine can produce a licence
+(R2–R4, B38). The studio's own master key is a normal key issued from the
+catalog with a large seat count; the app verifies it like any other.
+
+The public key is in the source as a byte array. A11 ("search the binary for
+cd a5 7d 1c c8 a6 e2 71") is satisfied in an Electron build by searching
+app.asar for the text form of those bytes, since the source ships as text.
+
+LICENSED_PRODUCT in main.js is the one switch: false gives the free build
+back, with no licence code reachable and no network requests at all.

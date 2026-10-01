@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld('chordlight', {
   onOpenFile: (cb) => ipcRenderer.on('file:open', (_e, f) => cb(f)),
   ready: () => ipcRenderer.send('renderer:ready'),
 
+  /* licensing (License Integration Standard) */
+  licenseStatus: () => ipcRenderer.invoke('license:status'),
+  licenseActivate: (key) => ipcRenderer.invoke('license:activate', key),
+  licenseDeactivate: () => ipcRenderer.invoke('license:deactivate'),
+  onLicense: (cb) => ipcRenderer.on('license:changed', (_e, st) => cb(st)),
+
   openExternal: (url) => ipcRenderer.send('open:external', url),
 
   appInfo: () => ipcRenderer.invoke('app:info')

@@ -15,7 +15,12 @@ const { app } = require('electron');
  */
 const PRODUCT = 'Chordlight 88';
 const PREF_DIR = path.join(app.getPath('documents'), 'Amanorsac Studio', PRODUCT);
-const STATE_DIR = path.join(app.getPath('appData'), 'Amanorsac Studio', PRODUCT);
+/* machine state: %LOCALAPPDATA% on Windows, Application Support on macOS
+   (File & Data Conventions §1.2). Builds before 2.0 wrote window-state to
+   the roaming folder on Windows; it is moved across once, below. */
+const STATE_BASE = process.platform === 'win32' ? (process.env.LOCALAPPDATA || app.getPath('appData')) : app.getPath('appData');
+const STATE_DIR = path.join(STATE_BASE, 'Amanorsac Studio', PRODUCT);
+const OLD_STATE_FILE = path.join(app.getPath('appData'), 'Amanorsac Studio', PRODUCT, 'window-state.json');
 const PREF_FILE = path.join(PREF_DIR, 'preferences.json');
 const STATE_FILE = path.join(STATE_DIR, 'window-state.json');
 /* what the player recorded — beside the preferences, where the user's things go */
@@ -54,6 +59,9 @@ const PREF_DEFAULTS = {
   titleSize: 34,
   titleColor: 'text',
   clipKeys: 'bottom',
+  clipTrail: 0,
+  plate: 'off',
+  plateAlpha: 55,
   keyGain: 0,
   vocGain: 0,
   advanced: false
@@ -82,7 +90,12 @@ function readJson(file, defaults) {
 
 function load() {
   if (!prefs) prefs = readJson(PREF_FILE, PREF_DEFAULTS);
-  if (!state) state = readJson(STATE_FILE, STATE_DEFAULTS);
+  if (!state) {
+    if (!fs.existsSync(STATE_FILE) && OLD_STATE_FILE !== STATE_FILE && fs.existsSync(OLD_STATE_FILE)) {
+      try { fs.mkdirSync(STATE_DIR, { recursive: true }); fs.copyFileSync(OLD_STATE_FILE, STATE_FILE); } catch { /* defaults then */ }
+    }
+    state = readJson(STATE_FILE, STATE_DEFAULTS);
+  }
   return Object.assign({}, prefs, state);
 }
 

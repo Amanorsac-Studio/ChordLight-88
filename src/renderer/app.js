@@ -254,7 +254,8 @@
   /* ================= the clip's look (all views) =================
      What the drawn frame needs beyond the readout state. The main window
      owns it and publishes it; the preview window mirrors it. */
-  const CLIP = { keys: 'bottom', title: '', font: 'inter', size: 34, color: 'text', quality: 'good' };
+  const CLIP = { keys: 'bottom', title: '', font: 'inter', size: 34, color: 'text', quality: 'good',
+                 plate: 'off', plateAlpha: 55, trail: 0 };
   const TITLE_FONTS = {
     inter:  { css: 'Inter, "Segoe UI", sans-serif', weight: 600 },
     barlow: { css: '"Barlow Condensed", Inter, sans-serif', weight: 700 },
@@ -271,6 +272,7 @@
   };
 
   let lastPublished = null;
+  const TRAIL = { current: '', currentNum: '', pending: '', pendingNum: '', timer: 0, list: [] };
 
   /* ---------- the picture ----------
      The clip is drawn, not screen-grabbed. Every frame, the app paints its
@@ -372,7 +374,7 @@
     const { S, padX, keysH, nameTop, feltTop, keysTop, keysBottom, bigSize, eyeSize, subSize, titlePx, baseline, titleY, ww, bw, bh } = G;
     const flat = !!CHROMA[backdrop];          // chroma: no glow anywhere, it would fringe when keyed
     const live = backdrop === 'video' && bgVideo.readyState >= 2 && bgVideo.videoWidth;
-    const stateKey = [st.chordClass, st.chordHTML, st.numClass, st.numHTML, st.romanText, st.numEyebrow].join('\u0001');
+    const stateKey = [st.chordClass, st.chordHTML, st.numClass, st.numHTML, st.romanText, st.numEyebrow, JSON.stringify(st.trail || []), CLIP.plate, CLIP.plateAlpha, CLIP.trail].join('\u0001');
     const keysKey = JSON.stringify([st.keys || [], st.ring || [], st.rootPc, st.velocity, st.keyLight, st.tags || []]);
     const frameKey = [themeKey, backdrop, tint, tintColor, picture && picture.url, CLIP.keys, CLIP.title, CLIP.font, CLIP.size, CLIP.color, stateKey, keysKey, JSON.stringify(st.cTags || {})].join('\u0002');
     if (!live && frameKey === FRAME.key) return false;   // nothing changed: nothing to draw
@@ -417,36 +419,78 @@
         c.fillStyle = T.a3; c.shadowColor = T.a3; c.shadowBlur = flat ? 0 : 9 * S;
         c.beginPath(); c.arc(dotX + 3 * S, y - eyeSize * 0.35, 2.6 * S, 0, Math.PI * 2); c.fill();
         c.shadowBlur = 0;
-        c.fillStyle = T.faint; c.fillText(text.toUpperCase(), right ? x : x + 14 * S, y);
+        c.fillStyle = CLIP.plate === 'light' ? '#4D5B75' : T.faint; c.fillText(text.toUpperCase(), right ? x : x + 14 * S, y);
         c.letterSpacing = '0px';
       };
-      const bigText = (html, x, y, right) => {
+      const bigText = (html, x, y, right, col, size) => {
+        const px = size || bigSize;
         const runs = htmlRuns(html);
-        const fontOf = (k) => k === 'main' ? `700 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
-          : k === 'slash' ? `600 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
-          : `700 ${Math.round(bigSize * 0.48)}px "Barlow Condensed", Inter, sans-serif`;
+        const fontOf = (k) => k === 'main' ? `700 ${px}px "Barlow Condensed", Inter, sans-serif`
+          : k === 'slash' ? `600 ${px}px "Barlow Condensed", Inter, sans-serif`
+          : `700 ${Math.round(px * 0.48)}px "Barlow Condensed", Inter, sans-serif`;
         let total = 0;
-        runs.forEach((r) => { c.font = fontOf(r.k); r.w = c.measureText(r.t).width + (r.k === 'supword' ? bigSize * 0.16 : 0); total += r.w; });
+        runs.forEach((r) => { c.font = fontOf(r.k); r.w = c.measureText(r.t).width + (r.k === 'supword' ? px * 0.16 : 0); total += r.w; });
         let cx = right ? x - total : x;
         c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+        const pick = col || ((k) => T[k]);
         for (const r of runs) {
           c.font = fontOf(r.k);
           const raised = r.k.startsWith('sup');
-          c.fillStyle = r.k === 'slash' ? T.dim : raised ? T.acc : T.chord;
-          c.shadowColor = rgba(T.a3rgb, 0.38); c.shadowBlur = flat || raised ? 0 : 46 * S;
-          c.fillText(r.t, cx + (r.k === 'supword' ? bigSize * 0.16 : 0), y - (raised ? bigSize * 0.46 : 0));
+          c.fillStyle = r.k === 'slash' ? pick('dim') : raised ? pick('acc') : pick('chord');
+          c.shadowColor = rgba(T.a3rgb, 0.38); c.shadowBlur = flat || raised || CLIP.plate === 'light' || size ? 0 : 46 * S;
+          c.fillText(r.t, cx + (r.k === 'supword' ? px * 0.16 : 0), y - (raised ? px * 0.46 : 0));
           c.shadowBlur = 0;
           cx += r.w;
         }
       };
       const chordEmpty = /empty/.test(st.chordClass || 'big empty'), numEmpty = /empty/.test(st.numClass || 'big empty');
+      const trail = (st.trail || []).slice(0, CLIP.trail);
+      const up = G.pos !== 'top';                              // the trail climbs away from the keys
+      /* trail geometry: each older chord smaller and fainter, stepping away */
+      const trailSteps = trail.map((_, i) => { const f = [0.46, 0.36, 0.29, 0.24][i]; return { f, size: Math.round(bigSize * f) }; });
+      let trailSpan = 0; trailSteps.forEach((t) => { trailSpan += t.size * 1.25; });
+      const trailTop = up ? baseline - bigSize * 1.08 - trailSpan : baseline + subSize * 2.6;
+      /* the plates: one behind each readout column, sized to what is in it */
+      if (CLIP.plate !== 'off') {
+        const dark = CLIP.plate === 'dark';
+        const a = Math.max(0, Math.min(100, CLIP.plateAlpha)) / 100;
+        c.fillStyle = dark ? `rgba(4,9,18,${a})` : `rgba(255,255,255,${a})`;
+        const padP = 24 * S;
+        const top = Math.min(baseline - bigSize * 0.92 - eyeSize * 1.4, up ? trailTop : baseline - bigSize * 0.92 - eyeSize * 1.4) - padP;
+        const bottom = Math.max(baseline + subSize * 2.1, up ? baseline + subSize * 2.1 : trailTop + trailSpan) + padP;
+        const colW = W * 0.34;
+        c.beginPath(); c.roundRect(padX - padP, top, colW, bottom - top, 14 * S); c.fill();
+        c.beginPath(); c.roundRect(W - padX + padP - colW, top, colW, bottom - top, 14 * S); c.fill();
+        if (CLIP.title) {
+          c.font = `${(TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter).weight} ${titlePx}px ${(TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter).css}`;
+          const tw = c.measureText(CLIP.title).width + padP * 2;
+          c.beginPath(); c.roundRect(W / 2 - tw / 2, titleY - titlePx * 0.95 - padP * 0.5, tw, titlePx * 1.25 + padP, 12 * S); c.fill();
+        }
+      }
+      const plateLight = CLIP.plate === 'light';
+      const ink = plateLight ? { chord: '#0B1322', acc: hexRgb(T.acc), dim: '#3A4A66', faint: '#4D5B75', alt: '#3E2F8A' } : null;
+      const col = (k) => (ink && ink[k]) ? (Array.isArray(ink[k]) ? rgba(ink[k], 1) : ink[k]) : T[k];
       eyebrow('Chord', padX, baseline - bigSize * 0.92, false);
-      if (!chordEmpty && st.chordHTML) bigText(st.chordHTML, padX, baseline, false);
+      if (!chordEmpty && st.chordHTML) bigText(st.chordHTML, padX, baseline, false, col);
       eyebrow(st.numEyebrow || 'Number', W - padX, baseline - bigSize * 0.92, true);
-      if (!numEmpty && st.numHTML) bigText(st.numHTML, W - padX, baseline, true);
+      if (!numEmpty && st.numHTML) bigText(st.numHTML, W - padX, baseline, true, col);
       if (st.romanText) {
         c.font = `500 ${subSize}px "JetBrains Mono", monospace`; c.letterSpacing = `${0.1 * subSize}px`;
-        c.fillStyle = T.alt; c.textAlign = 'right'; c.fillText(st.romanText, W - padX, baseline + subSize * 1.5); c.letterSpacing = '0px';
+        c.fillStyle = col('alt'); c.textAlign = 'right'; c.fillText(st.romanText, W - padX, baseline + subSize * 1.5); c.letterSpacing = '0px';
+      }
+      /* the trail itself */
+      if (trail.length) {
+        let y = up ? baseline - bigSize * 1.08 : trailTop + trailSteps[0].size;
+        trail.forEach((t, i) => {
+          const { size } = trailSteps[i];
+          const alpha = [0.72, 0.52, 0.38, 0.28][i];
+          if (up) y -= i === 0 ? 0 : trailSteps[i - 1].size * 0.25 + size;
+          c.globalAlpha = alpha;
+          bigText(t.c, padX, y, false, col, size);
+          if (t.n) bigText(t.n, W - padX, y, true, col, size);
+          c.globalAlpha = 1;
+          if (!up) y += size * 1.25;
+        });
       }
       if (CLIP.title) {
         const F = TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter, C = TITLE_COLORS[CLIP.color] || TITLE_COLORS.text;
@@ -745,8 +789,22 @@
       };
     }
 
+    /* the trail: the chords that came before this one, newest first. A chord
+       only counts once it has held for a third of a second — the first note
+       of a rolled chord, or a passing shape, never enters. A new chord
+       pushes the one it replaced; silence changes nothing. */
+    if (ch && text.chordHTML !== TRAIL.pending) {
+      TRAIL.pending = text.chordHTML; TRAIL.pendingNum = text.numHTML;
+      clearTimeout(TRAIL.timer);
+      TRAIL.timer = setTimeout(() => {
+        if (!TRAIL.pending || TRAIL.pending === TRAIL.current) return;
+        if (TRAIL.current) { TRAIL.list.unshift({ c: TRAIL.current, n: TRAIL.currentNum }); TRAIL.list.length = Math.min(TRAIL.list.length, 4); }
+        TRAIL.current = TRAIL.pending; TRAIL.currentNum = TRAIL.pendingNum;
+        paint();
+      }, 320);
+    }
     const state = Object.assign(
-      { accent, mode, keys, ring, rootPc, tags, cTags, keyLight, velocity, backdrop, tint, tintColor, keySize: +ksize.value, clip: Object.assign({}, CLIP) },
+      { accent, mode, keys, ring, rootPc, tags, cTags, keyLight, velocity, backdrop, tint, tintColor, keySize: +ksize.value, clip: Object.assign({}, CLIP), trail: TRAIL.list.slice(0, CLIP.trail) },
       text
     );
 
@@ -840,7 +898,7 @@
   addEventListener('keydown', (e) => {
     if (e.repeat) return;
     const t = e.target.tagName;
-    if (t === 'SELECT' || t === 'INPUT' || t === 'BUTTON') return;
+    if (t === 'SELECT' || t === 'INPUT' || t === 'BUTTON' || t === 'TEXTAREA') return;
     if (e.key === ' ') { e.preventDefault(); capture([0xB0, 64, 127]); setSustain(true); return; }
     const l = e.key.toLowerCase();
     if (l === 'z') { oct = Math.max(1, oct - 1); return; }
@@ -1492,6 +1550,10 @@
   const markTitle = () => [...$('titleswatches').children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === CLIP.color)));
   clipTitleEl.addEventListener('input', () => { CLIP.title = clipTitleEl.value.trim().slice(0, 80); store({ clipTitle: CLIP.title }); paint(); });
   clipKeysEl.addEventListener('change', () => { CLIP.keys = clipKeysEl.value; store({ clipKeys: CLIP.keys }); paint(); });
+  const trailEl = $('cliptrail'), plateEl = $('plate'), plateAlphaEl = $('platealpha'), plateAlphaV = $('platealphav');
+  trailEl.addEventListener('change', () => { CLIP.trail = +trailEl.value; store({ clipTrail: CLIP.trail }); paint(); });
+  plateEl.addEventListener('change', () => { CLIP.plate = plateEl.value; store({ plate: CLIP.plate }); paint(); });
+  plateAlphaEl.addEventListener('input', () => { CLIP.plateAlpha = +plateAlphaEl.value; plateAlphaV.textContent = CLIP.plateAlpha + '%'; store({ plateAlpha: CLIP.plateAlpha }); paint(); });
 
   /* Audio inputs only get names once the page has been allowed to use one,
      so both lists are (re)built after any successful capture too. */
@@ -1886,6 +1948,7 @@
     head.addEventListener('pointerup', () => { drag = null; });
   })();
   if (!BRIDGE) window.chordlightFrame = () => (FRAME.canvas ? FRAME.canvas.toDataURL('image/png') : null);   // bench build: look at a frame
+  if (!BRIDGE) window.chordlightClip = CLIP;   // bench build: poke the clip look
 
   /* System sound — what the keyboard is triggering in a DAW or Kontakt — is
      the one thing a drawn frame cannot carry. On Windows the loopback comes
@@ -2147,6 +2210,48 @@
     b.addEventListener('click', () => BRIDGE && BRIDGE.openExternal(b.dataset.link));
   });
 
+  /* ---------- Licensing (License Integration Standard §7) ----------
+     The interface follows one flag. The activation screen covers the app
+     until a proof verifies; About shows the status and Deactivate. */
+  const actScrim = $('activate'), keyInput = $('keyinput'), actBtn = $('activatebtn'), actMsg = $('actmsg');
+  const licRow = $('licencerow'), licBadge = $('licbadge'), aboutLic = $('aboutlicence'), aboutLicMsg = $('aboutlicmsg');
+  let LIC = { licensed: true, free: true };
+  const whenDate = (ms) => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  function paintLicense(st) {
+    LIC = st || LIC;
+    if (LIC.free) {
+      aboutLic.textContent = 'Ships unlicensed — no activation, no account';
+      licRow.hidden = true; actScrim.hidden = true; licBadge.hidden = true;
+      return;
+    }
+    actScrim.hidden = !!LIC.licensed;
+    if (!LIC.licensed && !about.hidden) openAbout(false);
+    actBtn.disabled = !!LIC.busy;
+    actMsg.textContent = LIC.message || '';
+    licBadge.hidden = !(LIC.licensed && LIC.offlineSoon);
+    aboutLic.textContent = LIC.licensed
+      ? `Licensed to this computer · ${LIC.keyMasked}${LIC.graceUntil ? ' · works offline until ' + whenDate(LIC.graceUntil) : ''}`
+      : (LIC.hasKey ? 'Key saved, not yet verified — connect to the internet' : 'Not activated');
+    licRow.hidden = !LIC.hasKey;
+    aboutLicMsg.textContent = LIC.licensed ? '' : (LIC.message || '');
+    $('deactivate').disabled = !!LIC.busy;
+    if (!LIC.licensed && !LIC.busy) setTimeout(() => keyInput.focus(), 50);
+  }
+  keyInput.addEventListener('input', () => {
+    /* XXXX-XXXX-XXXX-XXXX as they type; the server uppercases too */
+    const raw = keyInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+    keyInput.value = raw.replace(/(.{4})(?=.)/g, '$1-');
+  });
+  const doActivate = async () => { if (!BRIDGE) return; paintLicense(await BRIDGE.licenseActivate(keyInput.value)); };
+  actBtn.addEventListener('click', doActivate);
+  keyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doActivate(); });
+  actScrim.querySelectorAll('[data-link]').forEach((b) => b.addEventListener('click', () => BRIDGE && BRIDGE.openExternal(b.dataset.link)));
+  $('deactivate').addEventListener('click', async () => { if (!BRIDGE) return; paintLicense(await BRIDGE.licenseDeactivate()); });
+  if (BRIDGE) {
+    BRIDGE.onLicense(paintLicense);
+    BRIDGE.licenseStatus().then(paintLicense).catch(() => {});
+  }
+
   const setup = $('setup'), setupbtn = $('setupbtn'), advanced = $('advanced'), advbtn = $('advbtn');
   let advOpen = false;
   function showAdvanced(v) {
@@ -2252,6 +2357,12 @@
     if (typeof settingsCache.clipTitle === 'string') { CLIP.title = settingsCache.clipTitle.slice(0, 80); clipTitleEl.value = CLIP.title; }
     if (['bottom', 'middle', 'top'].includes(settingsCache.clipKeys)) CLIP.keys = settingsCache.clipKeys;
     clipKeysEl.value = CLIP.keys;
+    if ([0, 2, 4].includes(+settingsCache.clipTrail)) CLIP.trail = +settingsCache.clipTrail;
+    trailEl.value = String(CLIP.trail);
+    if (['off', 'dark', 'light'].includes(settingsCache.plate)) CLIP.plate = settingsCache.plate;
+    plateEl.value = CLIP.plate;
+    if (Number.isFinite(+settingsCache.plateAlpha)) CLIP.plateAlpha = Math.max(20, Math.min(100, +settingsCache.plateAlpha));
+    plateAlphaEl.value = CLIP.plateAlpha; plateAlphaV.textContent = CLIP.plateAlpha + '%';
     if (TITLE_FONTS[settingsCache.titleFont]) CLIP.font = settingsCache.titleFont;
     titleFontEl.value = CLIP.font;
     if (Number.isFinite(+settingsCache.titleSize)) CLIP.size = Math.max(18, Math.min(140, +settingsCache.titleSize));
