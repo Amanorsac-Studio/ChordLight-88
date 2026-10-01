@@ -109,14 +109,28 @@
     forest: { label: 'Forest', c: '#0E2A1C' },
     white:  { label: 'White',  c: '#FFFFFF' }
   };
+  /* `picture` is what is on file: { kind: 'picture', url: data URL } or
+     { kind: 'video', url: file/blob URL }. `backdrop` is what is chosen. */
   let backdrop = 'theme', tint = 40, tintColor = 'black', picture = null;
+  const bgVideo = $('bgvideo');
+  const CHROMA = { green: '#00B140', blue: '#0047BB' };
   function paintBackdrop() {
     const S = root.style;
     S.setProperty('--tint', (TINTS[tintColor] || TINTS.black).c);
     S.setProperty('--tint-a', String(tint / 100));
-    if (backdrop === 'picture' && picture) S.setProperty('--pic', `url("${picture}")`);
+    const havePic = picture && picture.kind === 'picture', haveVid = picture && picture.kind === 'video';
+    if (backdrop === 'picture' && havePic) S.setProperty('--pic', `url("${picture.url}")`);
     else S.removeProperty('--pic');
-    document.body.dataset.backdrop = (backdrop === 'picture' && picture) ? 'picture' : 'theme';
+    const mode = (backdrop === 'picture' && havePic) ? 'picture'
+      : (backdrop === 'video' && haveVid) ? 'video'
+      : CHROMA[backdrop] ? backdrop : 'theme';
+    document.body.dataset.backdrop = mode;
+    if (mode === 'video') {
+      if (bgVideo.getAttribute('src') !== picture.url) { bgVideo.src = picture.url; bgVideo.load(); }
+      bgVideo.play().catch(() => {});
+    } else {
+      if (!bgVideo.paused) bgVideo.pause();
+    }
   }
   /* pop-outs: the picture itself is fetched once, not published with every note */
   let pictureAsked = false;
@@ -124,7 +138,7 @@
     backdrop = s.backdrop || 'theme';
     if (typeof s.tint === 'number') tint = s.tint;
     if (s.tintColor) tintColor = s.tintColor;
-    if (backdrop === 'picture' && !picture && BRIDGE && (!pictureAsked || s.pictureChanged)) {
+    if ((backdrop === 'picture' || backdrop === 'video') && !picture && BRIDGE && (!pictureAsked || s.pictureChanged)) {
       pictureAsked = true;
       BRIDGE.getBackdrop().then((url) => { picture = url; paintBackdrop(); }).catch(() => {});
     }
@@ -1165,6 +1179,38 @@
   const soundSel = $('videosound'), audioInSel = $('audioin'), vocalInSel = $('vocalin'),
         duckEl = $('duck'), duckV = $('duckv'), offsetEl = $('aoffset'), offsetV = $('aoffsetv'), qualSel = $('vquality');
   let videoSound = 'system', audioInput = '', vocalInput = '', duck = 9, audioOffset = 0, videoQuality = 'good';
+  let clipTitle = '', clipKeys = 'bottom', titleFont = 'inter', titleSize = 34, titleColor = 'text';
+  const clipTitleEl = $('cliptitle'), clipKeysEl = $('clipkeys'), titleFontEl = $('titlefont'), titleSizeEl = $('titlesize'), titleSizeV = $('titlesizev');
+  const TITLE_FONTS = {
+    inter:  { css: 'Inter, "Segoe UI", sans-serif', weight: 600 },
+    barlow: { css: '"Barlow Condensed", Inter, sans-serif', weight: 700 },
+    mono:   { css: '"JetBrains Mono", ui-monospace, monospace', weight: 600 },
+    serif:  { css: 'Georgia, "Times New Roman", serif', weight: 600 }
+  };
+  /* colours resolved at draw time from the theme, so a title follows the accent */
+  const TITLE_COLORS = {
+    text:   { label: 'Text',   pick: (T) => T.chord },
+    accent: { label: 'Accent', pick: (T) => T.acc },
+    alt:    { label: 'Alt',    pick: (T) => T.alt },
+    white:  { label: 'White',  pick: () => '#FFFFFF' },
+    gold:   { label: 'Gold',   pick: () => '#FFB53D' }
+  };
+  titleFontEl.addEventListener('change', () => { titleFont = titleFontEl.value; store({ titleFont }); });
+  titleSizeEl.addEventListener('input', () => { titleSize = +titleSizeEl.value; titleSizeV.textContent = titleSize; store({ titleSize }); });
+  (function buildTitleSwatches() {
+    const box = $('titleswatches');
+    const preview = { text: '#EAF5FF', accent: '#4ECDE6', alt: '#B9AEFF', white: '#FFFFFF', gold: '#FFB53D' };
+    Object.entries(TITLE_COLORS).forEach(([k, C]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.k = k; b.title = C.label; b.setAttribute('aria-label', C.label);
+      b.style.background = preview[k];
+      b.addEventListener('click', () => { titleColor = k; markTitle(); store({ titleColor }); });
+      box.appendChild(b);
+    });
+  })();
+  const markTitle = () => [...$('titleswatches').children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === titleColor)));
+  clipTitleEl.addEventListener('input', () => { clipTitle = clipTitleEl.value.trim().slice(0, 80); store({ clipTitle }); });
+  clipKeysEl.addEventListener('change', () => { clipKeys = clipKeysEl.value; store({ clipKeys }); });
 
   /* Audio inputs only get names once the page has been allowed to use one,
      so both lists are (re)built after any successful capture too. */
@@ -1370,7 +1416,7 @@
         format: 'chordlight', version: 1,
         app: 'Chordlight 88' + (APP_VERSION ? ' ' + APP_VERSION : ''),
         created: new Date().toISOString(),
-        title: base,
+        title: clipTitle || base,
         keyCenter: keysel.value, spelling: spellsel.value, labelMode, accent,
         midi: { file: 'take.mid' },
         audio: audioBytes.length ? { file: audioFile, mime: useWav ? 'audio/wav' : AUDIO_CONTAINER.mime.split(';')[0], offsetMs, durationMs } : null
@@ -1465,79 +1511,363 @@
   [audioInSel, vocalInSel].forEach((sel) => sel.addEventListener('change', monitorInputs));
 
   /* ---------- the picture ----------
-     Three ways to get the window, tried in order:
-       1. getDisplayMedia — the main process answers with this window.
-       2. The same request with the source id given explicitly, the way
-          Electron always allowed before display-media handlers existed.
-       3. The screen this window is on. Chromium's window capturer refuses
-          some frameless windows on some Windows drivers with "Error
-          starting video capture"; the screen capturer never does. */
-  async function grabPicture(fps, wantSystem) {
-    const errs = [];
-    const audioOpt = wantSystem ? true : false;
-    if (BRIDGE) BRIDGE.captureKind('window');
-    try { return { display: await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: audioOpt }), how: 'window' }; }
-    catch (e) { errs.push(e); }
-    try { return { display: await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps } }), how: 'window' }; }
-    catch (e) { errs.push(e); }
-    if (BRIDGE) {
-      let ids = null;
-      try { ids = await BRIDGE.captureSources(); } catch { ids = null; }
-      if (ids && ids.window) {
-        try {
-          const display = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ids.window, maxFrameRate: fps } }
-          });
-          return { display, how: 'window' };
-        } catch (e) { errs.push(e); }
+     The clip is drawn, not screen-grabbed. Every frame, the app paints its
+     own Stage layout — readouts on top, keys edge to edge below, the theme
+     or your picture behind — into an offscreen canvas from the same state
+     the windows paint from. So the clip is always the whole Chordlight, at
+     1080p (4K on a 4K screen at Best), whatever the windows are doing:
+     detached keys, a floating chord card, another app on top — none of it
+     matters, and the OS window capturer that refuses frameless windows on
+     some drivers is never asked. */
+  const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+  /* any CSS colour (the theme writes hsl()) to [r,g,b], via a scratch canvas */
+  const scratch = document.createElement('canvas').getContext('2d');
+  const rgbCache = new Map();
+  const hexRgb = (css) => {
+    css = String(css).trim();
+    if (rgbCache.has(css)) return rgbCache.get(css);
+    scratch.fillStyle = '#000'; scratch.fillStyle = css;
+    const v = scratch.fillStyle;                                   // normalised: #rrggbb or rgba(...)
+    const out = v.startsWith('#') ? hex2rgb(v) : (v.match(/[\d.]+/g) || [0, 0, 0]).slice(0, 3).map(Number);
+    rgbCache.set(css, out);
+    return out;
+  };
+  const mixRgb = (a, pa, b) => a.map((v, i) => Math.round(v * pa + b[i] * (1 - pa)));
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  /* the chord / number HTML is walked, not re-derived: plain text at the
+     big size, .sup raised and small in the accent, .slash dim */
+  const htmlRuns = (html) => {
+    const box = document.createElement('div'); box.innerHTML = html;
+    const runs = [];
+    box.childNodes.forEach((n) => {
+      if (n.nodeType === 3) runs.push({ t: n.textContent, k: 'main' });
+      else runs.push({ t: n.textContent, k: n.classList.contains('sup') ? (n.classList.contains('word') ? 'supword' : 'sup') : n.classList.contains('slash') ? 'slash' : 'main' });
+    });
+    return runs;
+  };
+
+  const FRAME = { canvas: null, ctx: null, W: 0, H: 0, pic: null, raf: 0, last: 0, fps: 30, rec: false };
+  function frameSize() {
+    const dpr = window.devicePixelRatio || 1;
+    const big = (screen.width * dpr) >= 3000 && videoQuality === 'best';
+    return big ? [3840, 2160] : [1920, 1080];
+  }
+  function drawFrame() {
+    const { ctx, W, H } = FRAME;
+    rgbCache.clear();
+    const st = lastPublished || {};
+    const T = {
+      void: cssVar('--void'), bg1: cssVar('--bg-1'), bg2: cssVar('--bg-2'), a2: cssVar('--a2'), a3: cssVar('--a3'), a4: cssVar('--a4'), alt: cssVar('--alt'),
+      chord: cssVar('--chord'), faint: cssVar('--text-faint'), dim: cssVar('--text-dim'), acc: cssVar('--acc-txt'),
+      w1: hexRgb(cssVar('--key-w1')), w2: hexRgb(cssVar('--key-w2')), w3: hexRgb(cssVar('--key-w3')),
+      b1: hexRgb(cssVar('--key-b1')), b2: hexRgb(cssVar('--key-b2')), b3: hexRgb(cssVar('--key-b3')),
+      klbl: cssVar('--key-lbl'), kblbl: cssVar('--key-blbl'), kline: cssVar('--key-line'), a1: cssVar('--a1')
+    };
+    const S = H / 1080;                       // everything below is drawn at 1080p and scaled
+
+    /* ---- backdrop ---- */
+    const flat = !!CHROMA[backdrop];          // chroma: no glow anywhere, it would fringe when keyed
+    const cover = (im, iw, ih) => { const r = Math.max(W / iw, H / ih), w = iw * r, h = ih * r; ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h); };
+    const tintOver = () => { ctx.fillStyle = (TINTS[tintColor] || TINTS.black).c; ctx.globalAlpha = tint / 100; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; };
+    if (flat) {
+      ctx.fillStyle = CHROMA[backdrop]; ctx.fillRect(0, 0, W, H);
+    } else if (backdrop === 'picture' && FRAME.pic) {
+      cover(FRAME.pic, FRAME.pic.width, FRAME.pic.height); tintOver();
+    } else if (backdrop === 'video' && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
+      cover(bgVideo, bgVideo.videoWidth, bgVideo.videoHeight); tintOver();
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, T.bg2); g.addColorStop(0.42, T.bg1); g.addColorStop(1, T.void);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      const rg = ctx.createRadialGradient(W / 2, -H * 0.1, 0, W / 2, -H * 0.1, W * 0.55);
+      rg.addColorStop(0, rgba(hexRgb(T.a2), 0.16)); rg.addColorStop(1, rgba(hexRgb(T.a2), 0));
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    }
+
+    /* ---- geometry ----
+       The keys block is name row + felt + keys, a quarter of the frame tall.
+       It sits at the bottom, the middle or the top; the readouts take the
+       larger of the spaces left, and the title the other. */
+    const padX = W * 0.03, keysH = Math.round(H * 0.26), nameH = Math.round(56 * S), feltH = Math.round(6 * S);
+    const blockH = nameH + 6 * S + feltH + 4 * S + keysH;
+    const pos = clipKeys === 'top' ? 'top' : clipKeys === 'middle' ? 'middle' : 'bottom';
+    const blockTop = pos === 'bottom' ? H - blockH : pos === 'top' ? Math.round(24 * S) : Math.round((H - blockH) / 2);
+    const nameTop = blockTop, feltTop = nameTop + nameH + 6 * S, keysTop = feltTop + feltH + 4 * S, keysBottom = keysTop + keysH;
+    const bigSize = Math.round(132 * S), eyeSize = Math.round(12 * S), subSize = Math.round(15 * S), titlePx = Math.round(titleSize * S);
+    /* readouts: above the keys unless the keys are at the top */
+    const baseline = pos === 'top' ? keysBottom + 60 * S + bigSize * 0.92 + eyeSize * 1.6 : nameTop - 22 * S;
+    /* title: the space the readouts do not use */
+    const titleY = pos === 'top' ? H - 48 * S : pos === 'middle' ? keysBottom + 40 * S + titlePx : 44 * S + titlePx;
+
+    /* ---- readouts ---- */
+    const eyebrow = (text, x, y, right) => {
+      ctx.font = `500 ${eyeSize}px "JetBrains Mono", monospace`; ctx.letterSpacing = `${0.2 * eyeSize}px`;
+      ctx.textAlign = right ? 'right' : 'left'; ctx.textBaseline = 'alphabetic';
+      const tw = ctx.measureText(text.toUpperCase()).width;
+      const dotX = right ? x - tw - 14 * S : x;
+      ctx.fillStyle = T.a3; ctx.shadowColor = T.a3; ctx.shadowBlur = flat ? 0 : 9 * S;
+      ctx.beginPath(); ctx.arc(dotX + 3 * S, y - eyeSize * 0.35, 2.6 * S, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = T.faint; ctx.fillText(text.toUpperCase(), right ? x : x + 14 * S, y);
+      ctx.letterSpacing = '0px';
+    };
+    const bigText = (html, empty, x, y, right) => {
+      if (empty) {
+        ctx.font = `500 ${Math.round(26 * S)}px Inter, "Segoe UI", sans-serif`; ctx.fillStyle = T.faint; ctx.textAlign = right ? 'right' : 'left';
+        ctx.fillText(html.replace(/<[^>]+>/g, ''), x, y); return;
       }
-      BRIDGE.captureKind('screen');
-      try {
-        const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: audioOpt });
-        return { display, how: 'screen' };
-      } catch (e) { errs.push(e); }
-      if (ids && ids.screen) {
-        try {
-          const display = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ids.screen, maxFrameRate: fps } }
-          });
-          return { display, how: 'screen' };
-        } catch (e) { errs.push(e); }
+      const runs = htmlRuns(html);
+      const fontOf = (k) => k === 'main' ? `700 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
+        : k === 'slash' ? `600 ${bigSize}px "Barlow Condensed", Inter, sans-serif`
+        : `700 ${Math.round(bigSize * 0.48)}px "Barlow Condensed", Inter, sans-serif`;
+      let total = 0;
+      runs.forEach((r) => { ctx.font = fontOf(r.k); r.w = ctx.measureText(r.t).width + (r.k === 'supword' ? bigSize * 0.16 : 0); total += r.w; });
+      let cx = right ? x - total : x;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      for (const r of runs) {
+        ctx.font = fontOf(r.k);
+        const raised = r.k.startsWith('sup');
+        ctx.fillStyle = r.k === 'slash' ? T.dim : raised ? T.acc : T.chord;
+        ctx.shadowColor = rgba(hexRgb(T.a3), 0.38); ctx.shadowBlur = flat ? 0 : raised ? 0 : 46 * S;
+        ctx.fillText(r.t, cx + (r.k === 'supword' ? bigSize * 0.16 : 0), y - (raised ? bigSize * 0.46 : 0));
+        ctx.shadowBlur = 0;
+        cx += r.w;
+      }
+    };
+    const chordEmpty = /empty/.test(st.chordClass || 'big empty');
+    eyebrow('Chord', padX, baseline - bigSize * 0.92, false);
+    bigText(st.chordHTML || 'Play something', chordEmpty, padX, baseline, false);
+    eyebrow(st.numEyebrow || 'Number', W - padX, baseline - bigSize * 0.92, true);
+    bigText(st.numHTML || '—', /empty/.test(st.numClass || 'big empty'), W - padX, baseline, true);
+    if (st.romanText) {
+      ctx.font = `500 ${subSize}px "JetBrains Mono", monospace`; ctx.letterSpacing = `${0.1 * subSize}px`;
+      ctx.fillStyle = T.alt; ctx.textAlign = 'right'; ctx.fillText(st.romanText, W - padX, baseline + subSize * 1.5); ctx.letterSpacing = '0px';
+    }
+
+    /* ---- felt ---- */
+    const fg = ctx.createLinearGradient(0, 0, W, 0); fg.addColorStop(0, T.a1); fg.addColorStop(0.5, T.a2); fg.addColorStop(1, T.a1);
+    ctx.fillStyle = fg; ctx.globalAlpha = 0.9; ctx.shadowColor = rgba(hexRgb(T.a2), 0.4); ctx.shadowBlur = flat ? 0 : 16 * S;
+    ctx.fillRect(0, feltTop, W, feltH); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+
+    /* ---- keys ---- */
+    const ww = W / whites.length, bw = ww * 0.57, bh = keysH * 0.62;
+    const vel = new Map(st.keys || []), ring = new Map(st.ring || []), cTags = st.cTags || {};
+    const multi = (st.keys || []).length > 1, solid = st.keyLight === 'solid';
+    const shade = (v) => { const mid = velColor(v), hi = velColor(Math.min(127, v + 26)), lo = velColor(Math.max(14, v - 52)); return { mid, hi, lo }; };
+    const keyColor = (n, on, rg, black) => {
+      const v = st.velocity === false ? 43 : (on ? vel.get(n) : ring.get(n));
+      const c = shade(v);
+      if (on) return solid ? [c.mid, c.mid, c.mid] : [c.lo, c.mid, c.hi];
+      const base = black ? [T.b1, T.b2, T.b3] : [T.w1, T.w2, T.w3];
+      const p = black ? [0.62, 0.58, 0.52] : [0.5, 0.46, 0.42];
+      return solid ? [mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1])]
+        : [mixRgb(c.lo, p[0], base[0]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.hi, p[2], base[2])];
+    };
+    ctx.lineWidth = Math.max(1, S);
+    ctx.font = `500 ${Math.round(13 * S)}px "JetBrains Mono", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    let wi = 0;
+    const blacks = [];
+    for (let n = LOW; n <= HIGH; n++) {
+      if (isBlack(n)) { blacks.push([n, wi * ww - ww * 0.285]); continue; }
+      const x = wi * ww, on = vel.has(n), rg = !on && ring.has(n);
+      let stops;
+      if (on || rg) { const c = keyColor(n, on, rg, false); stops = c.map((q) => rgba(q, 1)); }
+      else stops = [rgba(T.w1, 1), rgba(T.w2, 1), rgba(T.w3, 1)];
+      const g = ctx.createLinearGradient(0, keysTop, 0, keysBottom); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.84, stops[1]); g.addColorStop(1, stops[2]);
+      ctx.fillStyle = g;
+      if (on) { const c = shade(st.velocity === false ? 43 : vel.get(n)); ctx.shadowColor = rgba(c.mid, 0.6); ctx.shadowBlur = flat ? 0 : 26 * S; }
+      ctx.fillRect(x, keysTop, ww, keysH); ctx.shadowBlur = 0;
+      ctx.strokeStyle = T.kline; ctx.strokeRect(x + 0.5, keysTop + 0.5, ww - 1, keysH - 1);
+      if (rg) { const c = shade(ring.get(n)); ctx.fillStyle = rgba(c.mid, 0.9); ctx.fillRect(x, keysTop, ww, 5 * S); }
+      if (on && multi && n % 12 === st.rootPc) {
+        ctx.fillStyle = '#04121F'; ctx.beginPath(); ctx.arc(x + ww / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2 * S; ctx.stroke(); ctx.lineWidth = Math.max(1, S);
+      }
+      if (!on && !rg && cTags[n]) { ctx.fillStyle = T.klbl; ctx.globalAlpha = 0.5; ctx.fillText(cTags[n], x + ww / 2, keysBottom - 10 * S); ctx.globalAlpha = 1; }
+      wi++;
+    }
+    for (const [n, x] of blacks) {
+      const on = vel.has(n), rg = !on && ring.has(n);
+      let stops;
+      if (on || rg) { const c = keyColor(n, on, rg, true); stops = c.map((q) => rgba(q, 1)); }
+      else stops = [rgba(T.b1, 1), rgba(T.b2, 1), rgba(T.b3, 1)];
+      const g = ctx.createLinearGradient(0, keysTop, 0, keysTop + bh); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.6, stops[1]); g.addColorStop(1, stops[2]);
+      ctx.fillStyle = g;
+      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = flat ? 0 : 6 * S; ctx.shadowOffsetY = 3 * S;
+      if (on) { const c = shade(st.velocity === false ? 43 : vel.get(n)); ctx.shadowColor = rgba(c.mid, 0.6); ctx.shadowBlur = flat ? 0 : 26 * S; ctx.shadowOffsetY = 0; }
+      ctx.fillRect(x, keysTop, bw, bh); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = rgba(T.b3, 1); ctx.strokeRect(x + 0.5, keysTop + 0.5, bw - 1, bh - 1);
+      if (rg) { const c = shade(ring.get(n)); ctx.fillStyle = rgba(c.mid, 0.9); ctx.fillRect(x, keysTop, bw, 5 * S); }
+      if (on && multi && n % 12 === st.rootPc) {
+        ctx.fillStyle = '#04121F'; ctx.beginPath(); ctx.arc(x + bw / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2 * S; ctx.stroke(); ctx.lineWidth = Math.max(1, S);
       }
     }
-    throw errs[errs.length - 1] || new Error('no capture available');
+
+    /* ---- name tags ---- */
+    ctx.font = `600 ${Math.round(15 * S)}px "JetBrains Mono", monospace`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    (st.tags || []).forEach((tag, i) => {
+      const row = i % 2, cx = centerPct.get(tag.n) / 100 * W;
+      const tw = ctx.measureText(tag.t).width + 16 * S, th = 24 * S, ty = nameTop + (row ? 26 * S : 0);
+      const g = ctx.createLinearGradient(0, ty, 0, ty + th);
+      if (tag.b) { g.addColorStop(0, '#fff'); g.addColorStop(1, T.a2); } else { g.addColorStop(0, T.a4); g.addColorStop(1, T.a3); }
+      ctx.shadowColor = rgba(hexRgb(T.a3), 0.5); ctx.shadowBlur = flat ? 0 : 16 * S;
+      ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(cx - tw / 2, ty, tw, th, 6 * S); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#04121D'; ctx.fillText(tag.t, cx, ty + th / 2 + 1);
+      const sg = ctx.createLinearGradient(0, ty + th, 0, feltTop); sg.addColorStop(0, T.a3); sg.addColorStop(1, rgba(hexRgb(T.a3), 0));
+      ctx.strokeStyle = sg; ctx.lineWidth = Math.max(1, S); ctx.beginPath(); ctx.moveTo(cx, ty + th); ctx.lineTo(cx, feltTop); ctx.stroke();
+    });
+    ctx.textBaseline = 'alphabetic';
+
+    /* ---- title ---- */
+    if (clipTitle) {
+      const F = TITLE_FONTS[titleFont] || TITLE_FONTS.inter, C = TITLE_COLORS[titleColor] || TITLE_COLORS.text;
+      ctx.font = `${F.weight} ${titlePx}px ${F.css}`; ctx.letterSpacing = `${(titleFont === 'barlow' ? 0.01 : 0.02) * titlePx}px`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = C.pick(T); ctx.shadowColor = rgba(hexRgb(T.a2), 0.35); ctx.shadowBlur = flat ? 0 : 18 * S;
+      ctx.fillText(clipTitle, W / 2, titleY); ctx.shadowBlur = 0; ctx.letterSpacing = '0px';
+    }
+  }
+  /* The frame runs for two customers: a clip being recorded (at the clip's
+     rate) and the Preview panel (15 fps, enough to see the layout). Either
+     keeps it alive; when both are gone the canvas is dropped. */
+  const PREVIEW = { on: false, box: $('preview'), el: $('previewcanvas'), ctx: null, size: 480 };
+  function frameLoop(ts) {
+    if (!FRAME.rec && !PREVIEW.on) { FRAME.raf = 0; return; }
+    const fps = FRAME.rec ? FRAME.fps : 15;
+    if (ts - FRAME.last >= 1000 / fps - 1) {
+      FRAME.last = ts;
+      try {
+        drawFrame();
+        if (PREVIEW.on && PREVIEW.ctx) PREVIEW.ctx.drawImage(FRAME.canvas, 0, 0, PREVIEW.el.width, PREVIEW.el.height);
+      } catch { /* one bad frame */ }
+    }
+    FRAME.raf = requestAnimationFrame(frameLoop);
+  }
+  const runFrames = () => { if (!FRAME.raf) FRAME.raf = requestAnimationFrame(frameLoop); };
+  async function ensureFrame() {
+    const [W, H] = frameSize();
+    if (!FRAME.canvas || FRAME.W !== W || FRAME.H !== H) {
+      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+      Object.assign(FRAME, { canvas, ctx: canvas.getContext('2d', { alpha: false }), W, H, last: 0 });
+    }
+    try {
+      await document.fonts.load(`700 ${Math.round(132 * H / 1080)}px "Barlow Condensed"`);
+      await document.fonts.load('500 14px "JetBrains Mono"');
+      const F = TITLE_FONTS[titleFont] || TITLE_FONTS.inter;
+      await document.fonts.load(`${F.weight} ${Math.round(titleSize * H / 1080)}px ${F.css}`);
+    } catch { /* system fonts then */ }
+    if (backdrop === 'picture' && picture && picture.kind === 'picture' && (!FRAME.pic || FRAME.pic.src !== picture.url)) {
+      await new Promise((ok) => { const im = new Image(); im.onload = () => { FRAME.pic = im; ok(); }; im.onerror = () => ok(); im.src = picture.url; });
+    }
+    if (backdrop === 'video' && picture && picture.kind === 'video') bgVideo.play().catch(() => {});
+  }
+  async function startFrames(fps) {
+    await ensureFrame();
+    FRAME.rec = true; FRAME.fps = fps;
+    drawFrame();
+    runFrames();
+    return FRAME.canvas.captureStream(fps);
+  }
+  function stopFrames() {
+    FRAME.rec = false;
+    PREVIEW.box.classList.remove('rec');
+    if (!PREVIEW.on) { cancelAnimationFrame(FRAME.raf); FRAME.raf = 0; FRAME.canvas = null; FRAME.ctx = null; FRAME.pic = null; }
+  }
+
+  /* ---------- Preview: what the clip will look like, live ---------- */
+  const previewBtn = $('previewbtn');
+  function sizePreview() {
+    const w = PREVIEW.size, h = Math.round(w * 9 / 16), dpr = Math.min(2, window.devicePixelRatio || 1);
+    PREVIEW.box.style.setProperty('--pw', w + 'px');
+    PREVIEW.el.width = Math.round(w * dpr); PREVIEW.el.height = Math.round(h * dpr);
+    PREVIEW.ctx = PREVIEW.el.getContext('2d', { alpha: false });
+    $('previewlabel').textContent = `Clip preview · ${FRAME.W || frameSize()[0]}×${FRAME.H || frameSize()[1]}`;
+  }
+  async function showPreview(v) {
+    PREVIEW.on = v;
+    PREVIEW.box.hidden = !v;
+    previewBtn.setAttribute('aria-pressed', String(v));
+    previewBtn.classList.toggle('on', v);
+    if (v) { await ensureFrame(); sizePreview(); drawFrame(); runFrames(); }
+    else if (!FRAME.rec) { cancelAnimationFrame(FRAME.raf); FRAME.raf = 0; FRAME.canvas = null; FRAME.ctx = null; FRAME.pic = null; }
+  }
+  previewBtn.addEventListener('click', () => showPreview(!PREVIEW.on));
+  $('previewclose').addEventListener('click', () => showPreview(false));
+  $('previewsize').addEventListener('click', () => {
+    PREVIEW.size = PREVIEW.size === 360 ? 480 : PREVIEW.size === 480 ? 720 : 360;
+    sizePreview();
+  });
+  /* drag it anywhere by its header */
+  (function dragPreview() {
+    const head = $('previewhead'); let drag = null;
+    head.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      const r = PREVIEW.box.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const b = PREVIEW.box;
+      b.style.left = Math.max(0, Math.min(innerWidth - b.offsetWidth, e.clientX - drag.dx)) + 'px';
+      b.style.top = Math.max(0, Math.min(innerHeight - b.offsetHeight, e.clientY - drag.dy)) + 'px';
+      b.style.right = 'auto'; b.style.bottom = 'auto';
+    });
+    head.addEventListener('pointerup', () => { drag = null; });
+  })();
+  if (!BRIDGE) window.chordlightFrame = () => (FRAME.canvas ? FRAME.canvas.toDataURL('image/png') : null);   // bench build: look at a frame
+
+  /* System sound — what the keyboard is triggering in a DAW or Kontakt — is
+     the one thing a drawn frame cannot carry. On Windows the loopback comes
+     from the desktop capturer, asked for sound only; if that is refused, a
+     screen capture is opened for its audio and its picture thrown away. */
+  async function systemAudio() {
+    if (!BRIDGE) return null;
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSource: 'desktop' } }, video: false });
+      const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
+    } catch { /* next */ }
+    try {
+      BRIDGE.captureKind('screen');
+      const st = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      st.getVideoTracks().forEach((t) => t.stop());
+      const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
+      st.getTracks().forEach((x) => x.stop());
+    } catch { /* none */ }
+    return null;
   }
 
   async function buildStream() {
     const wantSystem = videoSound === 'system' || videoSound === 'both';
-    const Q = QUALITY[videoQuality] || QUALITY.best;
-    const { display, how } = await grabPicture(Q.fps, wantSystem);
-    if (how === 'screen') toast('Recording the screen — this machine cannot capture just the window');
-    const tracks = [display.getVideoTracks()[0]];
-    const sysTrack = wantSystem ? display.getAudioTracks()[0] : null;
+    const Q = QUALITY[videoQuality] || QUALITY.good;
+    const picture = await startFrames(Q.fps);
+    const tracks = [picture.getVideoTracks()[0]];
+    let sys = null;
+    if (wantSystem) { sys = await systemAudio(); if (!sys) toast('No system sound on this machine — inputs only'); }
     MIX.recording = true;
-    await buildMix(sysTrack);
+    await buildMix(sys ? sys.track : null);
     const audioTrack = MIX.dest.stream.getAudioTracks()[0];
-    const hasSound = !!sysTrack || MIX.streams.length > 0;
+    const hasSound = !!sys || MIX.streams.length > 0;
     if (hasSound && audioTrack) tracks.push(audioTrack);
     else if (videoSound !== 'none') toast('No sound source could be opened — picture only');
     const stream = new MediaStream(tracks);
     const stopAll = () => {
-      display.getTracks().forEach((t) => t.stop());
+      stopFrames();
+      picture.getTracks().forEach((t) => t.stop());
+      if (sys) sys.stop();
       MIX.recording = false;
       tearDownMix();
       monitorInputs();
     };
-    return { stream, stopAll, ended: display.getVideoTracks()[0] };
+    return { stream, stopAll };
   }
 
   async function startVideo() {
     let built;
     try { built = await buildStream(); }
     catch (err) { MIX.recording = false; monitorInputs(); toast('Could not start video — ' + (err.message || err)); return; }
-    const { stream, stopAll, ended } = built;
+    const { stream, stopAll } = built;
     const hasAudio = stream.getAudioTracks().length > 0;
     /* a clip with no sound must not ask for an audio codec */
     const mime = hasAudio ? CONTAINER.mime : CONTAINER.mime.replace(/,(mp4a\.40\.2|opus)/, '');
@@ -1558,8 +1888,8 @@
     if ((alsoMidi || alsoPack) && !REC.on) startRec(base, false);
     if (alsoWav) startWav(base).catch((err) => toast('No WAV — ' + (err.message || err)));
     if (alsoPack) startPack(base, 'video').catch((err) => toast('No Chordlight file — ' + (err.message || err)));
-    ended.addEventListener('ended', () => { if (VID.rec && VID.rec.state !== 'inactive') stopVideo(); });
     VID.rec.start(1000);
+    PREVIEW.box.classList.add('rec');
     VID.start = performance.now() / 1000;
     vidBtn.setAttribute('aria-pressed', 'true');
     vidBtn.title = 'Stop and save the video';
@@ -1614,12 +1944,13 @@
   const tintFace = () => { tintV.textContent = tint + '%'; };
   function picFace() {
     picBadge.hidden = !!picture;
-    picBadge.textContent = 'No picture yet — choose one';
+    picBadge.textContent = 'No picture or video yet — choose one';
   }
   backdropSel.addEventListener('change', () => {
     backdrop = backdropSel.value;
     store({ backdrop });
-    if (backdrop === 'picture' && !picture) { $('picfile').click(); }
+    const need = backdrop === 'picture' ? 'picture' : backdrop === 'video' ? 'video' : null;
+    if (need && (!picture || picture.kind !== need)) $('picfile').click();
     paintBackdrop(); paint();
   });
   tintEl.addEventListener('input', () => { tint = +tintEl.value; tintFace(); store({ backdropTint: tint }); paintBackdrop(); paint(); });
@@ -1641,11 +1972,14 @@
     if (!f) return;
     try {
       const ext = (f.name.split('.').pop() || 'png').toLowerCase();
-      if (BRIDGE) picture = await BRIDGE.setBackdrop(new Uint8Array(await f.arrayBuffer()), ext);
-      else picture = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
-      backdrop = 'picture'; backdropSel.value = 'picture';
+      const isVideo = /^video\//.test(f.type) || ['mp4', 'm4v', 'webm', 'mov'].includes(ext);
+      if (BRIDGE) picture = await BRIDGE.setBackdropFile(f);
+      else if (isVideo) picture = { kind: 'video', url: URL.createObjectURL(f), mime: f.type };
+      else picture = { kind: 'picture', url: await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); }) };
+      backdrop = picture.kind; backdropSel.value = backdrop;
       store({ backdrop });
       picFace(); paintBackdrop();
+      FRAME.pic = null; if (PREVIEW.on || FRAME.rec) ensureFrame();
       /* the pop-outs fetch the new picture themselves */
       if (BRIDGE) BRIDGE.publish(Object.assign({}, lastPublished || {}, { backdrop, tint, tintColor, pictureChanged: true }));
       paint();
@@ -1847,16 +2181,26 @@
     if (QUALITY[settingsCache.videoQuality]) videoQuality = settingsCache.videoQuality;
     qualSel.value = videoQuality;
     alsoMidi = settingsCache.alsoMidi === true; alsoWav = settingsCache.alsoWav === true; alsoPack = settingsCache.alsoPack === true; markAlso();
+    if (typeof settingsCache.clipTitle === 'string') { clipTitle = settingsCache.clipTitle.slice(0, 80); clipTitleEl.value = clipTitle; }
+    if (['bottom', 'middle', 'top'].includes(settingsCache.clipKeys)) clipKeys = settingsCache.clipKeys;
+    clipKeysEl.value = clipKeys;
+    if (TITLE_FONTS[settingsCache.titleFont]) titleFont = settingsCache.titleFont;
+    titleFontEl.value = titleFont;
+    if (Number.isFinite(+settingsCache.titleSize)) titleSize = Math.max(18, Math.min(140, +settingsCache.titleSize));
+    titleSizeEl.value = titleSize; titleSizeV.textContent = titleSize;
+    if (TITLE_COLORS[settingsCache.titleColor]) titleColor = settingsCache.titleColor;
+    markTitle();
     fmtBadge.textContent = CONTAINER.label;
     fmtBadge.title = CONTAINER.ext === 'mp4' ? 'This machine records straight to MP4' : 'This machine cannot write MP4 — clips are WebM';
     refreshRecList();
-    backdrop = settingsCache.backdrop === 'picture' ? 'picture' : 'theme';   // chroma from 1.1 falls back to the theme
+    backdrop = ['picture', 'video', 'green', 'blue'].includes(settingsCache.backdrop) ? settingsCache.backdrop : 'theme';
     backdropSel.value = backdrop;
     if (Number.isFinite(+settingsCache.backdropTint)) tint = Math.max(0, Math.min(100, +settingsCache.backdropTint));
     tintEl.value = tint; tintFace();
     if (TINTS[settingsCache.backdropTintColor]) tintColor = settingsCache.backdropTintColor;
     markTint();
     if (BRIDGE) { try { picture = await BRIDGE.getBackdrop(); } catch { picture = null; } }
+    if (typeof picture === 'string') picture = { kind: 'picture', url: picture };
     picFace(); paintBackdrop();
     if (Number.isFinite(+settingsCache.keyGain)) keyGainDb = Math.max(-24, Math.min(12, +settingsCache.keyGain));
     if (Number.isFinite(+settingsCache.vocGain)) vocGainDb = Math.max(-24, Math.min(12, +settingsCache.vocGain));

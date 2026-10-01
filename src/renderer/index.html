@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src blob:;">
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src blob: file:;">
 <title>Chordlight 88</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
+<video class="bgvideo" id="bgvideo" muted loop playsinline aria-hidden="true"></video>
 <div class="app">
 
   <div class="titlebar raised">
@@ -28,7 +29,8 @@
     <div class="recgroup push" role="group" aria-label="Recording">
       <button class="btn" id="recbtn" type="button" aria-pressed="false" title="Record the MIDI you play to a .mid file">● Rec</button>
       <button class="btn" id="keepbtn" type="button" title="Save the last five minutes you played, even without pressing Rec">Keep</button>
-      <button class="btn" id="vidbtn" type="button" aria-pressed="false" title="Record a video of this window">◉ Video</button>
+      <button class="btn" id="vidbtn" type="button" aria-pressed="false" title="Record a video clip — drawn by the app, whatever the windows are doing">◉ Video</button>
+      <button class="btn" id="previewbtn" type="button" aria-pressed="false" title="See what the clip will look like, live">◫ Preview</button>
     </div>
     <button class="btn icon" id="stagebtn" type="button" title="Stage — full screen, keys edge to edge (F11)" aria-label="Stage mode">⛶</button>
     <button class="btn icon" id="modebtn" type="button" title="Light / dark" aria-label="Switch between light and dark">☾</button>
@@ -120,6 +122,9 @@
       <select id="backdrop">
         <option value="theme">Theme</option>
         <option value="picture">Your picture</option>
+        <option value="video">Your video</option>
+        <option value="green">Chroma green</option>
+        <option value="blue">Chroma blue</option>
       </select>
     </div>
     <div class="grp">
@@ -181,6 +186,35 @@
         </select>
       </div>
       <div class="grp">
+        <label class="fld" for="cliptitle">Clip title</label>
+        <input type="text" id="cliptitle" maxlength="80" placeholder="Lesson 3 — 2-5-1 in Eb" title="Shown in the video; also names a .chordlight take">
+      </div>
+      <div class="grp">
+        <label class="fld" for="titlefont">Title font</label>
+        <select id="titlefont">
+          <option value="inter">Inter</option>
+          <option value="barlow">Barlow Condensed</option>
+          <option value="mono">JetBrains Mono</option>
+          <option value="serif">Serif</option>
+        </select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="titlesize">Title size <span class="rv" id="titlesizev">34</span></label>
+        <input type="range" id="titlesize" min="18" max="140" step="2" value="34">
+      </div>
+      <div class="grp">
+        <label class="fld">Title colour</label>
+        <div class="swatches" id="titleswatches" role="group" aria-label="Title colour"></div>
+      </div>
+      <div class="grp">
+        <label class="fld" for="clipkeys">Keys in the clip</label>
+        <select id="clipkeys">
+          <option value="bottom">Bottom</option>
+          <option value="middle">Middle</option>
+          <option value="top">Top</option>
+        </select>
+      </div>
+      <div class="grp">
         <label class="fld">Also save</label>
         <div class="recgroup">
           <button class="btn" type="button" id="alsomidi" aria-pressed="false" title="While Video records, also save what you play as a .mid — same name, same folder">+ MIDI</button>
@@ -193,9 +227,9 @@
     <div class="row">
       <div class="tag"><span class="led"></span>Look</div>
       <div class="grp">
-        <label class="fld">Picture</label>
-        <button class="btn" type="button" id="pickpic">Choose picture…</button>
-        <input type="file" id="picfile" accept=".png,.jpg,.jpeg,.webp,.gif,image/*" hidden>
+        <label class="fld">Picture or video</label>
+        <button class="btn" type="button" id="pickpic">Choose…</button>
+        <input type="file" id="picfile" accept=".png,.jpg,.jpeg,.webp,.gif,.mp4,.m4v,.webm,.mov,image/*,video/*" hidden>
       </div>
       <div class="grp">
         <label class="fld" for="tint">Tint over picture <span class="rv" id="tintv">40%</span></label>
@@ -247,6 +281,14 @@
     </div>
   </div>
 
+  <div class="preview raised" id="preview" hidden>
+    <div class="phead" id="previewhead">
+      <span class="eyebrow"><span class="led"></span><span id="previewlabel">Clip preview</span></span>
+      <button class="btn icon" type="button" id="previewsize" title="Smaller / bigger">⤢</button>
+      <button class="btn icon" type="button" id="previewclose" aria-label="Close the preview">✕</button>
+    </div>
+    <canvas id="previewcanvas" width="960" height="540"></canvas>
+  </div>
   <div class="drophint" id="drophint" hidden><div>Drop a MIDI file to play it</div></div>
   <button class="btn stageexit" id="stageexit" type="button" hidden title="Leave stage mode (Esc)">✕ Exit stage</button>
   <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>

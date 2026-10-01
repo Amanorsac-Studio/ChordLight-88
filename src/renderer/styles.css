@@ -141,6 +141,15 @@ body[data-view="full"] .card.floating{
   display:flex;flex-direction:column;gap:9px;justify-content:center;
 }
 label.fld{font-family:var(--font-m);font-size:9px;letter-spacing:.17em;text-transform:uppercase;color:var(--text-faint);display:block;margin-bottom:5px}
+input[type=text]{
+  -webkit-appearance:none;appearance:none;
+  font-family:var(--font-m);font-size:11px;letter-spacing:.03em;color:var(--text);
+  background:linear-gradient(180deg,var(--ctl-2),var(--ctl-2));
+  border:1px solid var(--edge-hi);border-radius:6px;padding:7px 10px;width:220px;
+  box-shadow:inset 0 2px 5px var(--inset);
+}
+input[type=text]::placeholder{color:var(--text-faint)}
+input[type=text]:hover{border-color:var(--a2)}
 select,button.btn{
   -webkit-appearance:none;appearance:none;cursor:pointer;
   font-family:var(--font-m);font-size:11px;letter-spacing:.03em;color:var(--text);
@@ -481,6 +490,20 @@ body[data-view="number"] .eyebrow{font-size:clamp(8px,1.7vh,11px)}
 }
 
 /* ============================================================
+   Clip preview — a floating, draggable view of the drawn frame
+   ============================================================ */
+.preview{
+  position:fixed;right:20px;bottom:96px;z-index:190;width:var(--pw,480px);
+  padding:8px;border-radius:10px;-webkit-app-region:no-drag;
+}
+.preview .phead{display:flex;align-items:center;gap:6px;margin-bottom:6px;cursor:grab;user-select:none}
+.preview .phead .eyebrow{margin:0;padding:0 0 0 4px;flex:1 1 auto}
+.preview canvas{display:block;width:100%;aspect-ratio:16/9;border-radius:5px;background:#000;border:1px solid var(--edge)}
+.preview.rec{border-color:#E23A55;box-shadow:0 0 0 1px #E23A55,0 12px 30px var(--shadow)}
+.preview.rec .phead .led{background:#E23A55;box-shadow:0 0 9px #E23A55}
+body.onstage .preview{display:none}
+
+/* ============================================================
    Stage — full screen, keys edge to edge, one slim readout row
    ============================================================ */
 body.onstage{overflow:hidden}
@@ -520,26 +543,52 @@ body.onstage .wk{border-radius:0}
 body.onstage.hint .stageexit{opacity:1}
 
 /* ============================================================
-   Backdrop — the player's own picture behind everything but the keys
-   The picture sits on the body, a tint of chosen colour and strength over
-   it, and the panels go to glass so it shows through.
+   Backdrop — the player's own picture or video behind everything but
+   the keys; or a flat chroma colour to key out.
+   Picture / video: on the body (the video as a fixed element), a tint of
+   chosen colour and strength over it, and the panels go to glass.
    ============================================================ */
+.bgvideo{display:none}
 body[data-backdrop="picture"]{
   background:var(--pic) center/cover no-repeat fixed;
 }
-body[data-backdrop="picture"]::before{
+body[data-backdrop="video"] .bgvideo{
+  display:block;position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;z-index:-2;pointer-events:none;
+}
+body[data-backdrop="video"]{background:var(--void)}
+body[data-backdrop="picture"]::before,body[data-backdrop="video"]::before{
   content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
   background:var(--tint,#000);opacity:var(--tint-a,.4);
 }
-body[data-backdrop="picture"] .app{position:relative;z-index:0}
-body[data-backdrop="picture"] .raised,
-body[data-backdrop="picture"] .transport{
+body[data-backdrop="picture"] .app,body[data-backdrop="video"] .app{position:relative;z-index:0}
+body[data-backdrop="picture"] .raised,body[data-backdrop="video"] .raised,
+body[data-backdrop="picture"] .transport,body[data-backdrop="video"] .transport{
   background:color-mix(in srgb,var(--panel) 64%,transparent);
   backdrop-filter:blur(16px) saturate(1.2);
 }
-body[data-backdrop="picture"] .readout::before{opacity:.5}
-body[data-backdrop="picture"] .well{
+body[data-backdrop="picture"] .readout::before,body[data-backdrop="video"] .readout::before{opacity:.5}
+body[data-backdrop="picture"] .well,body[data-backdrop="video"] .well{
   background:color-mix(in srgb,var(--well) 78%,transparent);
   backdrop-filter:blur(16px);
 }
-body[data-backdrop="picture"].onstage .deck{background:none}
+/* Chroma: one flat colour everywhere but the keys, and no glow that would
+   bleed into the key colour and fringe when keyed out. */
+body[data-backdrop="green"]{--chroma:#00B140}
+body[data-backdrop="blue"]{--chroma:#0047BB}
+body[data-backdrop="green"],body[data-backdrop="blue"]{background:var(--chroma)}
+body[data-backdrop="green"] .app,body[data-backdrop="blue"] .app,
+body[data-backdrop="green"] .titlebar,body[data-backdrop="blue"] .titlebar,
+body[data-backdrop="green"] .card,body[data-backdrop="blue"] .card,
+body[data-backdrop="green"] .bedwrap,body[data-backdrop="blue"] .bedwrap,
+body[data-backdrop="green"] .status,body[data-backdrop="blue"] .status,
+body[data-backdrop="green"] .transport,body[data-backdrop="blue"] .transport{
+  background:var(--chroma);border-color:transparent;box-shadow:none;background-image:none;
+}
+body[data-backdrop="green"] .readout::before,body[data-backdrop="blue"] .readout::before{display:none}
+body[data-backdrop="green"] .wk.on,body[data-backdrop="blue"] .wk.on,
+body[data-backdrop="green"] .bk.on,body[data-backdrop="blue"] .bk.on,
+body[data-backdrop="green"] .nametag,body[data-backdrop="blue"] .nametag,
+body[data-backdrop="green"] .big,body[data-backdrop="blue"] .big,
+body[data-backdrop="green"] .eyebrow .led,body[data-backdrop="blue"] .eyebrow .led{
+  box-shadow:none;text-shadow:none;
+}

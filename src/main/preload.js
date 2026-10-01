@@ -1,5 +1,5 @@
 'use strict';
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const params = new URLSearchParams(location.search);
 const view = params.get('view') || 'full';
@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('chordlight', {
 
   /* the backdrop picture, kept in Documents/Amanorsac Studio/Chordlight 88/Backdrop */
   setBackdrop: (bytes, ext) => ipcRenderer.invoke('backdrop:set', { bytes, ext }),
+  /* a File from a picker, copied by path — a video never crosses IPC as bytes */
+  setBackdropFile: (file) => ipcRenderer.invoke('backdrop:set-path', webUtils.getPathForFile(file)),
   getBackdrop: () => ipcRenderer.invoke('backdrop:get'),
 
   /* video capture: which picture, and the raw source ids for the fallback path */

@@ -2,6 +2,50 @@
 
 Written for the person using the app, not for the commit log.
 
+## 1.5.1 — September 2026
+
+- **◫ Preview** — a floating, draggable panel showing exactly what the clip
+  will look like, live, before and while you record. Three sizes; a red
+  frame while a clip is recording. It shows the drawn frame, so the title,
+  keys position, backdrop and tint are all seen as the video will have them.
+
+## 1.5.0 — September 2026
+
+- **Your video as the backdrop.** Backdrop › Your video, then Advanced ›
+  Choose… — an MP4, WebM or MOV loops behind the app and in the clip, with
+  the same tint over it. It is copied beside your preferences, so the
+  original can move. Up to 1 GB.
+- **Chroma green and blue are back**, for keying in OBS, Premiere or
+  Resolve — in the app and, more usefully, in the clip: a flat colour behind
+  everything, and no glow anywhere that would fringe when keyed out.
+
+## 1.4.2 — September 2026
+
+- **Title font, size and colour** — Advanced › Title font (Inter, Barlow
+  Condensed, JetBrains Mono, Serif), Title size (18–140), Title colour (text,
+  accent, alt, white, gold — the first three follow the theme).
+
+## 1.4.1 — September 2026
+
+- **The clip's keys are a quarter of the frame**, not nearly half.
+- **Advanced › Keys in the clip — Bottom, Middle or Top.** The readouts take
+  the larger space left, the title the other.
+- **Advanced › Clip title** — a line of text in the video (a lesson name,
+  a song), also used as the title of a .chordlight take.
+- Your picture backdrop, with its tint, is in the clip.
+
+## 1.4.0 — September 2026
+
+- **Video is drawn, not screen-grabbed.** Every frame, Chordlight paints its
+  own Stage layout — readouts on top, keys edge to edge, the theme or your
+  picture behind — into a 1080p frame (4K on a 4K screen at Best) and
+  records that. So the clip is always the whole Chordlight and nothing else:
+  detached keys, a floating chord card, another app on top, none of it
+  matters. The OS window capturer that refused the window on some machines
+  (and fell back to the whole desktop) is no longer asked for the picture.
+- System sound still comes from the desktop capturer, sound only; if a
+  machine refuses even that, the app says so and records the inputs.
+
 ## 1.3.1 — September 2026
 
 - **Every take gets its own folder.** `Recordings/Chordlight take …/` holds

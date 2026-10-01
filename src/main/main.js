@@ -263,33 +263,55 @@ ipcMain.on('rec:open-folder', () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Backdrop picture — the player's own image behind the app
+ * Backdrop — the player's own picture or video behind the app
  *
- * Kept beside the preferences as Backdrop/backdrop.<ext>; the renderer gets
- * it back as a data URL, so no file: URL ever has to pass the CSP.
+ * Kept beside the preferences as Backdrop/backdrop.<ext>, one at a time. A
+ * picture goes back to the renderer as a data URL; a video is too big for
+ * that and goes back as a file URL (the CSP admits file: for media only).
+ * A video is copied from its path rather than streamed through IPC.
  * ------------------------------------------------------------------ */
-const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
+const PIC_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
+const VID_MIME = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
 const dataUrl = (file) => {
   const ext = path.extname(file).slice(1).toLowerCase();
   const buf = fs.readFileSync(file);
-  return `data:${MIME[ext] || 'image/png'};base64,${buf.toString('base64')}`;
+  return `data:${PIC_MIME[ext] || 'image/png'};base64,${buf.toString('base64')}`;
 };
-ipcMain.handle('backdrop:set', async (_e, { bytes, ext }) => {
-  const e = String(ext || 'png').toLowerCase().replace(/[^a-z]/g, '');
-  if (!MIME[e]) throw new Error('Use a PNG, JPG, WebP or GIF');
-  if (bytes.byteLength > 24 * 1024 * 1024) throw new Error('That picture is over 24 MB');
+const describeBackdrop = (file) => {
+  const ext = path.extname(file).slice(1).toLowerCase();
+  if (PIC_MIME[ext]) return { kind: 'picture', url: dataUrl(file) };
+  return { kind: 'video', url: require('url').pathToFileURL(file).href, mime: VID_MIME[ext] || 'video/mp4' };
+};
+async function clearBackdrops() {
   await fs.promises.mkdir(settings.BACKDROP_DIR, { recursive: true });
-  for (const old of Object.keys(MIME)) {                       // one picture at a time
+  for (const old of [...Object.keys(PIC_MIME), ...Object.keys(VID_MIME)]) {
     try { await fs.promises.unlink(path.join(settings.BACKDROP_DIR, 'backdrop.' + old)); } catch { /* none */ }
   }
+}
+ipcMain.handle('backdrop:set', async (_e, { bytes, ext }) => {
+  const e = String(ext || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!PIC_MIME[e]) throw new Error('Use a PNG, JPG, WebP or GIF');
+  if (bytes.byteLength > 24 * 1024 * 1024) throw new Error('That picture is over 24 MB');
+  await clearBackdrops();
   const file = path.join(settings.BACKDROP_DIR, 'backdrop.' + e);
   await fs.promises.writeFile(file, Buffer.from(bytes));
-  return dataUrl(file);
+  return describeBackdrop(file);
+});
+ipcMain.handle('backdrop:set-path', async (_e, src) => {
+  const from = String(src || '');
+  const e = path.extname(from).slice(1).toLowerCase();
+  if (!PIC_MIME[e] && !VID_MIME[e]) throw new Error('Use a PNG, JPG, WebP, GIF, MP4, WebM or MOV');
+  const st = await fs.promises.stat(from);
+  if (VID_MIME[e] && st.size > 1024 * 1024 * 1024) throw new Error('That video is over 1 GB');
+  await clearBackdrops();
+  const file = path.join(settings.BACKDROP_DIR, 'backdrop.' + e);
+  await fs.promises.copyFile(from, file);
+  return describeBackdrop(file);
 });
 ipcMain.handle('backdrop:get', async () => {
-  for (const ext of Object.keys(MIME)) {
+  for (const ext of [...Object.keys(PIC_MIME), ...Object.keys(VID_MIME)]) {
     const file = path.join(settings.BACKDROP_DIR, 'backdrop.' + ext);
-    if (fs.existsSync(file)) { try { return dataUrl(file); } catch { return null; } }
+    if (fs.existsSync(file)) { try { return describeBackdrop(file); } catch { return null; } }
   }
   return null;
 });

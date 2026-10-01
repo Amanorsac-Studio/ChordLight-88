@@ -31,7 +31,7 @@ Amanorsac Studio · Windows and macOS · Electron.
 - **.chordlight** — a take, its sound and its look in one shareable file; opens
   cued in the transport, plays back keys, chords and audio together, at any speed.
 - **Stage** full-screen mode, solid/gradient key light, fixed/sensitive velocity,
-  your own picture as the backdrop with a tint over it.
+  your own picture or video as the backdrop with a tint over it, or chroma green/blue for keying.
 - **Video with sound** — system sound, a keyboard input, a vocal input, or all three
   mixed; the keys duck under your voice by as many dB as you choose.
 - **Shared MIDI** — ports are never opened exclusively, so a DAW or Kontakt can hold

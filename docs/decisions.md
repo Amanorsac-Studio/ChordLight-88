@@ -171,3 +171,16 @@ The look — key centre, spelling, labels, accent — rides along and is applied
 for that playback without being saved to preferences: the sender's view,
 not a change to the receiver's setup. The backdrop picture does not ride
 along: megabytes in every take for a decoration.
+
+## The clip is a drawing, not a capture (1.4.0)
+
+Window capture answered the wrong question. It asked the OS for a picture
+of one window, and got nothing on some drivers (frameless windows trip
+Windows Graphics Capture), or the wrong thing when the keys lived in a
+window of their own. The app already owns every pixel it shows, so the
+clip is painted from the published state onto an offscreen canvas in the
+Stage layout — the same state the windows and the pop-outs paint from —
+and recorded from there. One drawing, always complete, at a fixed 1080p or
+4K regardless of window size, never showing anything that is not Chordlight.
+The cost is a second renderer for the keys and the readouts, kept in one
+function beside the DOM one and fed by the same numbers.

@@ -49,6 +49,11 @@ const PREF_DEFAULTS = {
   alsoMidi: false,
   alsoWav: false,
   alsoPack: false,
+  clipTitle: '',
+  titleFont: 'inter',
+  titleSize: 34,
+  titleColor: 'text',
+  clipKeys: 'bottom',
   keyGain: 0,
   vocGain: 0,
   advanced: false
