@@ -6,3 +6,7 @@ out/
 Thumbs.db
 src/renderer/fonts/*.woff2
 chordlight-test.html
+Claude outputs/
+
+# marketing kit — screenshots and the promo clip stay out of the build repo
+marketing/

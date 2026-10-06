@@ -1,9 +1,10 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, shell, screen, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen, session, desktopCapturer, powerSaveBlocker, powerMonitor } = require('electron');
 const settings = require('./settings');
 const license = require('./license');
+const trial = require('./trial');
 
 /* Chordlight is a licensed product (Master Standard §3): one key, two
    computers, verified against the studio's server. Set to false for the
@@ -15,6 +16,11 @@ const LICENSED_PRODUCT = false;
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer', 'index.html');
 const PRELOAD = path.join(__dirname, 'preload.js');
+const LOCKED = path.join(__dirname, '..', 'renderer', 'locked.html');
+const LOCK_PRELOAD = path.join(__dirname, 'lock-preload.js');
+/* The Free Trial edition is sealed: no developer tools in a packaged trial. */
+const DEVTOOLS = !(trial.isTrial && app.isPackaged);
+const PRODUCT_NAME = trial.isTrial ? 'Chordlight 88 Free Trial' : 'Chordlight 88';
 
 /** @type {BrowserWindow|null} */ let mainWin = null;
 /** @type {Record<string, BrowserWindow|null>} */
@@ -29,6 +35,35 @@ const POPOUT_SPEC = {
 
 /* Last published readout, so a pop-out opened mid-song paints immediately. */
 let lastState = null;
+
+/* ------------------------------------------------------------------ *
+ * Logs — one small text file per event, in the machine-state folder
+ * (never in Documents). Only ever written when something went wrong.
+ * ------------------------------------------------------------------ */
+const LOG_DIR = path.join(license.stateDir(), 'Logs');
+let recovered = null;
+function writeLog(kind, details) {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const file = path.join(LOG_DIR, `${kind}-${stamp}.txt`);
+    const lines = [
+      `Chordlight 88 ${app.getVersion()} — ${kind} process gone`,
+      `when       ${new Date().toString()}`,
+      `platform   ${process.platform} ${process.arch} ${(() => { try { return process.getSystemVersion(); } catch { return ''; } })()}`,
+      `electron   ${process.versions.electron} · chromium ${process.versions.chrome}`,
+      `reason     ${details && details.reason}`,
+      `exit code  ${details && details.exitCode}`,
+      details && details.type ? `type       ${details.type}` : '',
+      details && details.name ? `name       ${details.name}` : ''
+    ].filter(Boolean);
+    fs.writeFileSync(file, lines.join('\n') + '\n', 'utf8');
+    return file;
+  } catch { return ''; }
+}
+app.on('child-process-gone', (_e, details) => {
+  if (details && details.reason && details.reason !== 'clean-exit' && details.reason !== 'killed') writeLog(details.type || 'child', details);
+});
 
 /* ------------------------------------------------------------------ *
  * Windows
@@ -62,13 +97,17 @@ function createMainWindow() {
     frame: false,
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     trafficLightPosition: isMac ? { x: 14, y: 18 } : undefined,
-    title: 'Chordlight 88',
+    title: PRODUCT_NAME,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      spellcheck: false
+      spellcheck: false,
+      devTools: DEVTOOLS,
+      /* the main window reads the MIDI and feeds the pop-outs and the clip:
+         it keeps full speed when another app covers it */
+      backgroundThrottling: false
     }
   });
 
@@ -91,6 +130,20 @@ function createMainWindow() {
   mainWin.on('closed', () => {
     mainWin = null;
     for (const name of Object.keys(popouts)) closePopout(name);
+  });
+
+  /* If the window's process dies — a capture or encoder failure, out of
+     memory — the window is reloaded with a message instead of staying
+     blank, and the reason is written to a log the player can send in. */
+  mainWin.webContents.on('render-process-gone', (_e, details) => {
+    if (!mainWin || mainWin.isDestroyed()) return;
+    if (details.reason === 'clean-exit' || details.reason === 'killed') return;
+    const file = writeLog('window', details);
+    recovered = { reason: details.reason, file };
+    try { mainWin.webContents.reload(); } catch { /* the window is going */ }
+  });
+  mainWin.webContents.on('did-finish-load', () => {
+    if (recovered) { const r = recovered; recovered = null; setTimeout(() => sendToMain('app:recovered', r), 600); }
   });
 
   // External links open in the real browser, never in-app.
@@ -136,7 +189,8 @@ function createPopout(name, docked) {
       preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      devTools: DEVTOOLS
     }
   });
 
@@ -183,6 +237,13 @@ function sendToMain(channel, payload) {
  * IPC
  * ------------------------------------------------------------------ */
 
+/* While a video records, the computer is not allowed to nap the app. */
+let recBlocker = -1;
+ipcMain.on('rec:busy', (_e, on) => {
+  if (on && recBlocker < 0) recBlocker = powerSaveBlocker.start('prevent-app-suspension');
+  else if (!on && recBlocker >= 0) { try { powerSaveBlocker.stop(recBlocker); } catch { /* already stopped */ } recBlocker = -1; }
+});
+
 ipcMain.on('state:publish', (_e, state) => {
   lastState = state;
   for (const name of Object.keys(popouts)) {
@@ -193,6 +254,7 @@ ipcMain.on('state:publish', (_e, state) => {
 
 ipcMain.handle('popout:toggle', (_e, name, docked) => {
   if (!Object.prototype.hasOwnProperty.call(popouts, name)) return false;
+  if (trial.isTrial && trial.status().locked) return false;
   if (popouts[name]) {
     closePopout(name);
     return false;
@@ -229,6 +291,7 @@ ipcMain.on('window:control', (e, action) => {
 const safeName = (name) => String(name || 'recording').replace(/[^\w .,()-]+/g, '_').slice(0, 120);
 ipcMain.handle('rec:save', async (_e, { name, bytes }) => {
   const safe = safeName(name);
+  trial.checkSave(safe, bytes);
   const take = safe.replace(/\.[^.]+$/, '');
   const dir = path.join(settings.REC_DIR, take);
   await fs.promises.mkdir(dir, { recursive: true });
@@ -264,6 +327,10 @@ ipcMain.handle('rec:read', async (_e, name) => {
   const file = path.join(settings.REC_DIR, ...parts);
   const buf = await fs.promises.readFile(file);
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+});
+ipcMain.on('logs:open', () => {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  shell.openPath(LOG_DIR);
 });
 ipcMain.on('rec:open-folder', () => {
   fs.mkdirSync(settings.REC_DIR, { recursive: true });
@@ -327,6 +394,15 @@ ipcMain.handle('backdrop:get', async () => {
   return null;
 });
 
+/* System sound — "what is playing" — is captured on Windows only (WASAPI
+   loopback, no permission, no driver). On macOS this Electron has no working
+   route to it: the old one recorded the screen just for its audio, which
+   needs the Screen Recording permission, hands back a silent track, and took
+   the window down (2.0.4). The Core Audio tap that fixes it properly needs
+   Electron 42+ and macOS 14.2+ — see docs/video-capture-research.md. Until
+   then the Mac build never asks for the display at all. */
+const SYSTEM_SOUND = process.platform === 'win32';
+
 /* When the renderer asks for a display stream it gets this window and
    nothing else — no picker, no other windows or screens. On Windows the
    system audio comes along, so a clip carries what Kontakt was playing. */
@@ -338,7 +414,8 @@ function allowSelfCapture() {
        display-capture    — the window, for a video clip.
        media (audio)      — a keyboard or a mic, for the sound in that clip.
      Camera, location, notifications and the rest stay denied. */
-  const ALLOW = new Set(['midi', 'midiSysex', 'display-capture', 'fullscreen']);
+  const ALLOW = new Set(['midi', 'midiSysex', 'fullscreen']);
+  if (SYSTEM_SOUND) ALLOW.add('display-capture');
   const decide = (permission, details) => {
     if (ALLOW.has(permission)) return true;
     if (permission === 'media') {
@@ -359,6 +436,7 @@ function allowSelfCapture() {
   let captureKind = 'window';
   ipcMain.on('capture:kind', (_e, kind) => { captureKind = kind === 'screen' ? 'screen' : 'window'; });
   ipcMain.handle('capture:sources', async () => {
+    if (!SYSTEM_SOUND) return { window: null, screen: null };
     const id = mainWin && !mainWin.isDestroyed() ? mainWin.getMediaSourceId() : null;
     const sources = await desktopCapturer.getSources({ types: ['window', 'screen'], thumbnailSize: { width: 0, height: 0 } });
     const mine = sources.find((src) => src.id === id);
@@ -367,6 +445,7 @@ function allowSelfCapture() {
     return { window: mine ? mine.id : null, screen: scr ? scr.id : null };
   });
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    if (!SYSTEM_SOUND) { callback({}); return; }   // macOS: never the display
     desktopCapturer.getSources({ types: ['window', 'screen'], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
         const audio = process.platform === 'win32' ? 'loopback' : undefined;
@@ -394,8 +473,51 @@ ipcMain.handle('app:info', () => ({
   preferencesFile: settings.PREF_FILE,
   windowStateFile: settings.STATE_FILE,
   licensed: LICENSED_PRODUCT,
-  licenseFolder: license.stateDir()
+  licenseFolder: license.stateDir(),
+  systemSound: SYSTEM_SOUND,
+  osVersion: (() => { try { return process.getSystemVersion(); } catch { return ''; } })(),
+  logFolder: LOG_DIR,
+  edition: trial.isTrial ? 'trial' : 'full',
+  productName: PRODUCT_NAME
 }));
+
+/* ------------------------------------------------------------------ *
+ * Free Trial — 7 days, then the app locks; recordings stop at 1 minute.
+ * The main process decides: a locked trial never opens the app window at
+ * all, so there is nothing in a page to switch back on.
+ * ------------------------------------------------------------------ */
+ipcMain.handle('trial:status', () => trial.status());
+ipcMain.on('trial:take', () => trial.takeStarted());
+ipcMain.on('trial:quit', () => app.quit());
+
+/** @type {BrowserWindow|null} */ let lockWin = null;
+function createLockWindow() {
+  if (lockWin && !lockWin.isDestroyed()) { lockWin.focus(); return; }
+  lockWin = new BrowserWindow({
+    width: 560, height: 470, useContentSize: true, resizable: false, maximizable: false, fullscreenable: false,
+    show: false, backgroundColor: '#070D1B', title: PRODUCT_NAME, autoHideMenuBar: true,
+    webPreferences: { preload: LOCK_PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: DEVTOOLS }
+  });
+  lockWin.setMenu(null);
+  lockWin.loadFile(LOCKED);
+  lockWin.once('ready-to-show', () => lockWin.show());
+  lockWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  lockWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  lockWin.on('closed', () => { lockWin = null; });
+}
+/* Locks the running app the moment the trial ends: every Chordlight window
+   closes and the trial-ended screen takes their place. */
+function lockNow() {
+  createLockWindow();
+  for (const name of Object.keys(popouts)) closePopout(name);
+  if (mainWin && !mainWin.isDestroyed()) { mainWin.removeAllListeners('closed'); mainWin.destroy(); mainWin = null; }
+}
+function recheckTrial() {
+  if (!trial.isTrial) return;
+  const st = trial.evaluate();
+  sendToMain('trial:changed', st);
+  if (st.locked) lockNow();
+}
 
 /* ------------------------------------------------------------------ *
  * Licensing — the renderer asks, the main process answers; the only
@@ -455,6 +577,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
+    if (lockWin && !lockWin.isDestroyed()) { lockWin.focus(); return; }
     if (mainWin) {
       if (mainWin.isMinimized()) mainWin.restore();
       mainWin.focus();
@@ -463,6 +586,18 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    if (trial.isTrial) {
+      /* the verdict comes before any window: a locked trial gets the
+         trial-ended screen and nothing else */
+      if (trial.evaluate().locked) {
+        createLockWindow();
+        app.on('activate', () => createLockWindow());
+        return;
+      }
+      trial.checkNetworkTime().then((ok) => { if (ok) recheckTrial(); });
+      setInterval(recheckTrial, 10 * 60 * 1000);
+      powerMonitor.on('resume', () => { trial.checkNetworkTime().finally(recheckTrial); });
+    }
     allowSelfCapture();
     if (LICENSED_PRODUCT) license.start();
     if (!isMac) openFile(fileFromArgv(process.argv));
@@ -475,6 +610,7 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     app.on('activate', () => {
+      if (trial.isTrial && trial.status().locked) { createLockWindow(); return; }
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
     });
   });

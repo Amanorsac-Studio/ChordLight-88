@@ -601,3 +601,8 @@ body[data-backdrop="green"] .big,body[data-backdrop="blue"] .big,
 body[data-backdrop="green"] .eyebrow .led,body[data-backdrop="blue"] .eyebrow .led{
   box-shadow:none;text-shadow:none;
 }
+
+/* Free Trial edition */
+.wordmark .trialtag{font-style:normal;color:var(--alt);letter-spacing:.055em}
+.badge.trialbadge{cursor:pointer;line-height:normal}
+.badge.trialbadge.warn{color:var(--alt);border-color:color-mix(in srgb,var(--alt) 45%,var(--edge))}

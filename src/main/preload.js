@@ -1,5 +1,19 @@
 'use strict';
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const fs = require('fs');
+const path = require('path');
+
+/* The clip thread and the WAV tap are started from the app's own files.
+   Read here (only these, only from the app's renderer folder) so they never
+   depend on how a page may fetch a file:// URL. */
+const ASSETS = new Set(['clip-draw.js', 'clip-worker.js', 'wav-tap.js',
+  'fonts/inter-400.woff2', 'fonts/inter-500.woff2', 'fonts/inter-600.woff2', 'fonts/inter-700.woff2',
+  'fonts/jetbrains-mono-400.woff2', 'fonts/jetbrains-mono-500.woff2', 'fonts/jetbrains-mono-600.woff2',
+  'fonts/barlow-condensed-600.woff2', 'fonts/barlow-condensed-700.woff2']);
+function readAsset(name) {
+  if (!ASSETS.has(name)) return null;
+  try { return new Uint8Array(fs.readFileSync(path.join(__dirname, '..', 'renderer', name))); } catch { return null; }
+}
 
 const params = new URLSearchParams(location.search);
 const view = params.get('view') || 'full';
@@ -27,6 +41,7 @@ contextBridge.exposeInMainWorld('chordlight', {
   /* recordings land in Documents/Amanorsac Studio/Chordlight 88/Recordings */
   saveRecording: (name, bytes) => ipcRenderer.invoke('rec:save', { name, bytes }),
   openRecordings: () => ipcRenderer.send('rec:open-folder'),
+  recBusy: (on) => ipcRenderer.send('rec:busy', !!on),
   listRecordings: () => ipcRenderer.invoke('rec:list'),
   readRecording: (name) => ipcRenderer.invoke('rec:read', name),
 
@@ -50,7 +65,19 @@ contextBridge.exposeInMainWorld('chordlight', {
   licenseDeactivate: () => ipcRenderer.invoke('license:deactivate'),
   onLicense: (cb) => ipcRenderer.on('license:changed', (_e, st) => cb(st)),
 
+  /* Free Trial edition: the days left, and a note when a take starts so the
+     main process can hold every save to one minute */
+  trialStatus: () => ipcRenderer.invoke('trial:status'),
+  trialTake: () => ipcRenderer.send('trial:take'),
+  onTrial: (cb) => ipcRenderer.on('trial:changed', (_e, st) => cb(st)),
+
   openExternal: (url) => ipcRenderer.send('open:external', url),
 
-  appInfo: () => ipcRenderer.invoke('app:info')
+  appInfo: () => ipcRenderer.invoke('app:info'),
+  /* the window came back after its process died: say so, once */
+  onRecovered: (cb) => ipcRenderer.on('app:recovered', (_e, r) => cb(r)),
+  openLogs: () => ipcRenderer.send('logs:open'),
+
+  /* the app's own renderer files, for the clip thread (see ASSETS) */
+  asset: (name) => readAsset(name)
 });

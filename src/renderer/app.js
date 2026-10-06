@@ -10,6 +10,11 @@
     : (new URLSearchParams(location.search).get('view') || 'full');
   const TEXT_VIEW = VIEW === 'chord' || VIEW === 'number';
   document.body.dataset.view = VIEW;
+  /* Free Trial edition: the main process says whether this is the trial (it
+     decides, and it re-checks every save). The browser test build can play
+     the trial with ?trial in its URL. */
+  const TRIAL = { on: false, max: 60, st: null, mark: 'Chordlight 88 · Free Trial' };
+  if (!BRIDGE && new URLSearchParams(location.search).has('trial')) TRIAL.on = true;
 
   const SH = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const FL = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -37,6 +42,19 @@
      counting towards the name and is drawn as ringing instead. */
   const GATHER = 200;
   let lastOnset = -1e9;
+
+  /* Notes land in the state the moment they arrive; the screen catches up
+     at most once every 12 ms. A fast passage is a hundred changes to what
+     is held but only as many repaints as the display can show — and the
+     first note after a pause still paints at once. */
+  const PAINT_GAP = 12;
+  let paintAt = -1e9, paintTimer = 0;
+  function paintSoon() {
+    if (paintTimer) return;
+    const wait = PAINT_GAP - (performance.now() - paintAt);
+    if (wait <= 0 || document.hidden) paint();
+    else paintTimer = setTimeout(() => { paintTimer = 0; paint(); }, wait);
+  }
 
   /* ================= theme ================= */
   const ACCENTS = {
@@ -148,7 +166,7 @@
       BRIDGE.getBackdrop().then((url) => { picture = url; paintBackdrop(); }).catch(() => {});
     }
     if (s.pictureChanged && BRIDGE) {
-      BRIDGE.getBackdrop().then((url) => { picture = url; FRAME.pic = null; FRAME.key = ''; paintBackdrop(); }).catch(() => {});
+      BRIDGE.getBackdrop().then((url) => { picture = url; paintBackdrop(); }).catch(() => {});
     }
     paintBackdrop();
   }
@@ -199,14 +217,26 @@
     bed.appendChild(el); keyEls.set(n, el);
   }
 
-  /* velocity colour */
+  /* velocity colour — worked out once per accent and velocity */
   const hex2rgb = (x) => [parseInt(x.slice(1, 3), 16), parseInt(x.slice(3, 5), 16), parseInt(x.slice(5, 7), 16)];
+  const velCache = new Map();
+  let velCacheAccent = '';
   function velColor(v) {
+    if (velCacheAccent !== accent) { velCache.clear(); velCacheAccent = accent; }
+    let out = velCache.get(v);
+    if (out) return out;
     const S = (ACCENTS[accent] || ACCENTS.blue).stops.map(hex2rgb);
     const t = Math.min(1, Math.max(0, v / 127));
     const seg = Math.min(2, Math.floor(t * 3)), f = t * 3 - seg;
-    return S[seg].map((c, i) => Math.round(c + (S[seg + 1][i] - c) * f));
+    out = S[seg].map((c, i) => Math.round(c + (S[seg + 1][i] - c) * f));
+    velCache.set(v, out);
+    return out;
   }
+  /* write to the page only when the value is new */
+  const setHTML = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+  const setClass = (el, cls) => { if (el.className !== cls) el.className = cls; };
+  const keySig = new Map();
+  let tagSig = null;
   const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
   /* Paints the keybed from a published state, so the keys pop-out mirrors
@@ -222,6 +252,11 @@
     keyEls.forEach((el, n) => {
       const on = vel.has(n);
       const rg = !on && ring.has(n);
+      /* a key is only touched when how it looks has changed */
+      const sig = (on ? 'o' : rg ? 'r' : '-') + (on && n % 12 === rootPc && multi ? 'R' : '')
+        + ((on || rg) ? '|' + (state.velocity === false ? 43 : (on ? vel.get(n) : ring.get(n))) + '|' + accent : '|' + (cTags[n] || ''));
+      if (keySig.get(n) === sig) return;
+      keySig.set(n, sig);
       el.classList.toggle('on', on);
       el.classList.toggle('ring', rg);
       el.classList.toggle('root', on && n % 12 === rootPc && multi);
@@ -242,6 +277,9 @@
       }
     });
 
+    const tSig = (state.tags || []).map((t) => t.n + ':' + t.t + ':' + (t.b ? 1 : 0)).join(',');
+    if (tSig === tagSig) return;
+    tagSig = tSig;
     nameRow.textContent = '';
     (state.tags || []).forEach((tag, i) => {
       const t = document.createElement('span'), row = i % 2;
@@ -313,30 +351,15 @@
     return runs;
   };
 
-  const FRAME = { canvas: null, ctx: null, W: 0, H: 0, pic: null, raf: 0, last: 0, fps: 30, rec: false, key: '', track: null };
+  const FRAME = { canvas: null, ctx: null, W: 0, H: 0, pic: null, raf: 0, last: 0, fps: 30, rec: false, key: '', track: null, active: false };
+  var PIC = { url: '', serial: 0 };
   function frameSize() {
     const dpr = window.devicePixelRatio || 1;
     const big = (screen.width * dpr) >= 3000 && CLIP.quality === 'best';
     return big ? [3840, 2160] : [1920, 1080];
   }
-  /* The frame is five layers, each cached until what it shows changes:
-       background   — theme gradient, picture + tint, or chroma (a video
-                      backdrop is drawn live, it is the one thing that moves)
-       text         — eyebrows, chord, number, roman, title
-       whites       — the 52 unlit white keys, with the C labels
-       blacks       — the 36 unlit black keys (transparent elsewhere)
-     and, drawn fresh each frame on top: the felt, the lit and ringing keys,
-     and the name tags. Nothing redraws unless a key or a word changed, so a
-     held chord costs nothing and a preview window keeps up. */
-  const LAYER = {};
-  function layerCanvas(name, W, H) {
-    let L = LAYER[name];
-    if (!L || L.canvas.width !== W || L.canvas.height !== H) {
-      const c = document.createElement('canvas'); c.width = W; c.height = H;
-      L = LAYER[name] = { canvas: c, ctx: c.getContext('2d'), key: '' };
-    }
-    return L;
-  }
+  /* The frame is five layers, each cached until what it shows changes —
+     see clip-draw.js, which draws it. */
   let themeKey = '', themeTokens = null;
   function tokens() {
     const k = accent + '|' + mode + '|' + document.body.dataset.backdrop;
@@ -349,247 +372,61 @@
       w1: hexRgb(cssVar('--key-w1')), w2: hexRgb(cssVar('--key-w2')), w3: hexRgb(cssVar('--key-w3')),
       b1: hexRgb(cssVar('--key-b1')), b2: hexRgb(cssVar('--key-b2')), b3: hexRgb(cssVar('--key-b3')),
       klbl: cssVar('--key-lbl'), kblbl: cssVar('--key-blbl'), kline: cssVar('--key-line'), a1: cssVar('--a1'),
-      a2rgb: hexRgb(cssVar('--a2')), a3rgb: hexRgb(cssVar('--a3'))
+      a2rgb: hexRgb(cssVar('--a2')), a3rgb: hexRgb(cssVar('--a3')), accRgb: hexRgb(cssVar('--acc-txt'))
     };
     return themeTokens;
   }
-  /* geometry for a frame size and keys position */
-  function frameGeometry(W, H) {
-    const S = H / 1080;
-    const padX = W * 0.03, keysH = Math.round(H * 0.26), nameH = Math.round(56 * S), feltH = Math.round(6 * S);
-    const blockH = nameH + 6 * S + feltH + 4 * S + keysH;
-    const pos = CLIP.keys === 'top' ? 'top' : CLIP.keys === 'middle' ? 'middle' : 'bottom';
-    const blockTop = pos === 'bottom' ? H - blockH : pos === 'top' ? Math.round(24 * S) : Math.round((H - blockH) / 2);
-    const nameTop = blockTop, feltTop = nameTop + nameH + 6 * S, keysTop = feltTop + feltH + 4 * S, keysBottom = keysTop + keysH;
-    const bigSize = Math.round(132 * S), eyeSize = Math.round(12 * S), subSize = Math.round(15 * S), titlePx = Math.round(CLIP.size * S);
-    const baseline = pos === 'top' ? keysBottom + 60 * S + bigSize * 0.92 + eyeSize * 1.6 : nameTop - 22 * S;
-    const titleY = pos === 'top' ? H - 48 * S : pos === 'middle' ? keysBottom + 40 * S + titlePx : 44 * S + titlePx;
-    const ww = W / whites.length, bw = ww * 0.57, bh = keysH * 0.62;
-    return { S, padX, keysH, nameH, feltH, pos, nameTop, feltTop, keysTop, keysBottom, bigSize, eyeSize, subSize, titlePx, baseline, titleY, ww, bw, bh };
+  /* The clip is drawn by clip-draw.js — on its own thread when it can be
+     (clip-worker.js), here in the window when not. What it needs from the
+     window is a snapshot: the resolved colours, the chord text already split
+     into its runs, the velocity ramp. Building one is cheap. */
+  const CLIPDRAW = (typeof ChordlightClipDraw === 'function') ? ChordlightClipDraw() : null;
+  const runsCache = new Map();
+  const runsOf = (html) => {
+    let r = runsCache.get(html);
+    if (!r) { if (runsCache.size > 400) runsCache.clear(); r = htmlRuns(html); runsCache.set(html, r); }
+    return r;
+  };
+  let velTable = null, velTableAccent = '';
+  function velTab() {
+    if (!velTable || velTableAccent !== accent) { velTableAccent = accent; velTable = []; for (let v = 0; v < 128; v++) velTable.push(velColor(v)); }
+    return velTable;
   }
-
-  function drawFrame() {
-    const { ctx, W, H } = FRAME;
+  /* a short name for the picture on file, so a snapshot never carries the
+     picture itself */
+  function picKeyNow() {
+    if (!picture) return '';
+    if (picture.url !== PIC.url) { PIC.url = picture.url; PIC.serial++; }
+    return picture.kind + ':' + PIC.serial;
+  }
+  function clipSnap() {
     const st = lastPublished || {};
     const T = tokens();
-    const G = frameGeometry(W, H);
-    const { S, padX, keysH, nameTop, feltTop, keysTop, keysBottom, bigSize, eyeSize, subSize, titlePx, baseline, titleY, ww, bw, bh } = G;
-    const flat = !!CHROMA[backdrop];          // chroma: no glow anywhere, it would fringe when keyed
+    const runs = {};
+    const add = (h) => { if (h && !runs[h]) runs[h] = runsOf(h); };
+    add(st.chordHTML); add(st.numHTML); (st.trail || []).forEach((t) => { add(t.c); add(t.n); });
+    const TF = TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter, TC = TITLE_COLORS[CLIP.color] || TITLE_COLORS.text;
+    return {
+      themeKey, T, vel: velTab(), runs,
+      chroma: CHROMA[backdrop] || null, backdrop, tint, tintFill: (TINTS[tintColor] || TINTS.black).c,
+      picKey: picKeyNow(),
+      CLIP: Object.assign({}, CLIP), titleFont: { weight: TF.weight, css: TF.css }, titleFill: TC.pick(T),
+      trialMark: TRIAL.on ? TRIAL.mark : '',
+      st: {
+        chordClass: st.chordClass, chordHTML: st.chordHTML, numClass: st.numClass, numHTML: st.numHTML,
+        romanText: st.romanText, numEyebrow: st.numEyebrow, trail: st.trail, keys: st.keys, ring: st.ring,
+        rootPc: st.rootPc, velocity: st.velocity, keyLight: st.keyLight, tags: st.tags, cTags: st.cTags
+      }
+    };
+  }
+  /* the window drawing the clip itself — only when no worker could start */
+  function drawFrame() {
+    if (!CLIPDRAW || !FRAME.ctx) return false;
+    const S = clipSnap();
+    S.pic = (backdrop === 'picture' && FRAME.pic) ? FRAME.pic : null;
     const live = backdrop === 'video' && bgVideo.readyState >= 2 && bgVideo.videoWidth;
-    const stateKey = [st.chordClass, st.chordHTML, st.numClass, st.numHTML, st.romanText, st.numEyebrow, JSON.stringify(st.trail || []), CLIP.plate, CLIP.plateAlpha, CLIP.trail].join('\u0001');
-    const keysKey = JSON.stringify([st.keys || [], st.ring || [], st.rootPc, st.velocity, st.keyLight, st.tags || []]);
-    const frameKey = [themeKey, backdrop, tint, tintColor, picture && picture.url, CLIP.keys, CLIP.title, CLIP.font, CLIP.size, CLIP.color, stateKey, keysKey, JSON.stringify(st.cTags || {})].join('\u0002');
-    if (!live && frameKey === FRAME.key) return false;   // nothing changed: nothing to draw
-    FRAME.key = frameKey;
-
-    /* ---- background ---- */
-    const cover = (c, im, iw, ih) => { const r = Math.max(W / iw, H / ih), w = iw * r, h = ih * r; c.drawImage(im, (W - w) / 2, (H - h) / 2, w, h); };
-    const tintOver = (c) => { c.fillStyle = (TINTS[tintColor] || TINTS.black).c; c.globalAlpha = tint / 100; c.fillRect(0, 0, W, H); c.globalAlpha = 1; };
-    if (live) {
-      cover(ctx, bgVideo, bgVideo.videoWidth, bgVideo.videoHeight); tintOver(ctx);
-    } else {
-      const B = layerCanvas('bg', W, H);
-      const bgKey = [themeKey, backdrop, tint, tintColor, picture && picture.url, FRAME.pic ? FRAME.pic.src : ''].join('|');
-      if (B.key !== bgKey) {
-        B.key = bgKey;
-        const c = B.ctx;
-        if (flat) { c.fillStyle = CHROMA[backdrop]; c.fillRect(0, 0, W, H); }
-        else if (backdrop === 'picture' && FRAME.pic) { cover(c, FRAME.pic, FRAME.pic.width, FRAME.pic.height); tintOver(c); }
-        else {
-          const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, T.bg2); g.addColorStop(0.42, T.bg1); g.addColorStop(1, T.void);
-          c.fillStyle = g; c.fillRect(0, 0, W, H);
-          const rg = c.createRadialGradient(W / 2, -H * 0.1, 0, W / 2, -H * 0.1, W * 0.55);
-          rg.addColorStop(0, rgba(T.a2rgb, 0.16)); rg.addColorStop(1, rgba(T.a2rgb, 0));
-          c.fillStyle = rg; c.fillRect(0, 0, W, H);
-        }
-      }
-      ctx.drawImage(B.canvas, 0, 0);
-    }
-
-    /* ---- text: eyebrows, readouts, title ---- */
-    const X = layerCanvas('text', W, H);
-    const textKey = [themeKey, flat, CLIP.keys, CLIP.title, CLIP.font, CLIP.size, CLIP.color, stateKey].join('|');
-    if (X.key !== textKey) {
-      X.key = textKey;
-      const c = X.ctx;
-      c.clearRect(0, 0, W, H);
-      const eyebrow = (text, x, y, right) => {
-        c.font = `500 ${eyeSize}px "JetBrains Mono", monospace`; c.letterSpacing = `${0.2 * eyeSize}px`;
-        c.textAlign = right ? 'right' : 'left'; c.textBaseline = 'alphabetic';
-        const tw = c.measureText(text.toUpperCase()).width;
-        const dotX = right ? x - tw - 14 * S : x;
-        c.fillStyle = T.a3; c.shadowColor = T.a3; c.shadowBlur = flat ? 0 : 9 * S;
-        c.beginPath(); c.arc(dotX + 3 * S, y - eyeSize * 0.35, 2.6 * S, 0, Math.PI * 2); c.fill();
-        c.shadowBlur = 0;
-        c.fillStyle = CLIP.plate === 'light' ? '#4D5B75' : T.faint; c.fillText(text.toUpperCase(), right ? x : x + 14 * S, y);
-        c.letterSpacing = '0px';
-      };
-      const bigText = (html, x, y, right, col, size) => {
-        const px = size || bigSize;
-        const runs = htmlRuns(html);
-        const fontOf = (k) => k === 'main' ? `700 ${px}px "Barlow Condensed", Inter, sans-serif`
-          : k === 'slash' ? `600 ${px}px "Barlow Condensed", Inter, sans-serif`
-          : `700 ${Math.round(px * 0.48)}px "Barlow Condensed", Inter, sans-serif`;
-        let total = 0;
-        runs.forEach((r) => { c.font = fontOf(r.k); r.w = c.measureText(r.t).width + (r.k === 'supword' ? px * 0.16 : 0); total += r.w; });
-        let cx = right ? x - total : x;
-        c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-        const pick = col || ((k) => T[k]);
-        for (const r of runs) {
-          c.font = fontOf(r.k);
-          const raised = r.k.startsWith('sup');
-          c.fillStyle = r.k === 'slash' ? pick('dim') : raised ? pick('acc') : pick('chord');
-          c.shadowColor = rgba(T.a3rgb, 0.38); c.shadowBlur = flat || raised || CLIP.plate === 'light' || size ? 0 : 46 * S;
-          c.fillText(r.t, cx + (r.k === 'supword' ? px * 0.16 : 0), y - (raised ? px * 0.46 : 0));
-          c.shadowBlur = 0;
-          cx += r.w;
-        }
-      };
-      const chordEmpty = /empty/.test(st.chordClass || 'big empty'), numEmpty = /empty/.test(st.numClass || 'big empty');
-      const trail = (st.trail || []).slice(0, CLIP.trail);
-      const up = G.pos !== 'top';                              // the trail climbs away from the keys
-      /* trail geometry: each older chord smaller and fainter, stepping away */
-      const trailSteps = trail.map((_, i) => { const f = [0.46, 0.36, 0.29, 0.24][i]; return { f, size: Math.round(bigSize * f) }; });
-      let trailSpan = 0; trailSteps.forEach((t) => { trailSpan += t.size * 1.25; });
-      const trailTop = up ? baseline - bigSize * 1.08 - trailSpan : baseline + subSize * 2.6;
-      /* the plates: one behind each readout column, sized to what is in it */
-      if (CLIP.plate !== 'off') {
-        const dark = CLIP.plate === 'dark';
-        const a = Math.max(0, Math.min(100, CLIP.plateAlpha)) / 100;
-        c.fillStyle = dark ? `rgba(4,9,18,${a})` : `rgba(255,255,255,${a})`;
-        const padP = 24 * S;
-        const top = Math.min(baseline - bigSize * 0.92 - eyeSize * 1.4, up ? trailTop : baseline - bigSize * 0.92 - eyeSize * 1.4) - padP;
-        const bottom = Math.max(baseline + subSize * 2.1, up ? baseline + subSize * 2.1 : trailTop + trailSpan) + padP;
-        const colW = W * 0.34;
-        c.beginPath(); c.roundRect(padX - padP, top, colW, bottom - top, 14 * S); c.fill();
-        c.beginPath(); c.roundRect(W - padX + padP - colW, top, colW, bottom - top, 14 * S); c.fill();
-        if (CLIP.title) {
-          c.font = `${(TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter).weight} ${titlePx}px ${(TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter).css}`;
-          const tw = c.measureText(CLIP.title).width + padP * 2;
-          c.beginPath(); c.roundRect(W / 2 - tw / 2, titleY - titlePx * 0.95 - padP * 0.5, tw, titlePx * 1.25 + padP, 12 * S); c.fill();
-        }
-      }
-      const plateLight = CLIP.plate === 'light';
-      const ink = plateLight ? { chord: '#0B1322', acc: hexRgb(T.acc), dim: '#3A4A66', faint: '#4D5B75', alt: '#3E2F8A' } : null;
-      const col = (k) => (ink && ink[k]) ? (Array.isArray(ink[k]) ? rgba(ink[k], 1) : ink[k]) : T[k];
-      eyebrow('Chord', padX, baseline - bigSize * 0.92, false);
-      if (!chordEmpty && st.chordHTML) bigText(st.chordHTML, padX, baseline, false, col);
-      eyebrow(st.numEyebrow || 'Number', W - padX, baseline - bigSize * 0.92, true);
-      if (!numEmpty && st.numHTML) bigText(st.numHTML, W - padX, baseline, true, col);
-      if (st.romanText) {
-        c.font = `500 ${subSize}px "JetBrains Mono", monospace`; c.letterSpacing = `${0.1 * subSize}px`;
-        c.fillStyle = col('alt'); c.textAlign = 'right'; c.fillText(st.romanText, W - padX, baseline + subSize * 1.5); c.letterSpacing = '0px';
-      }
-      /* the trail itself */
-      if (trail.length) {
-        let y = up ? baseline - bigSize * 1.08 : trailTop + trailSteps[0].size;
-        trail.forEach((t, i) => {
-          const { size } = trailSteps[i];
-          const alpha = [0.72, 0.52, 0.38, 0.28][i];
-          if (up) y -= i === 0 ? 0 : trailSteps[i - 1].size * 0.25 + size;
-          c.globalAlpha = alpha;
-          bigText(t.c, padX, y, false, col, size);
-          if (t.n) bigText(t.n, W - padX, y, true, col, size);
-          c.globalAlpha = 1;
-          if (!up) y += size * 1.25;
-        });
-      }
-      if (CLIP.title) {
-        const F = TITLE_FONTS[CLIP.font] || TITLE_FONTS.inter, C = TITLE_COLORS[CLIP.color] || TITLE_COLORS.text;
-        c.font = `${F.weight} ${titlePx}px ${F.css}`; c.letterSpacing = `${(CLIP.font === 'barlow' ? 0.01 : 0.02) * titlePx}px`;
-        c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-        c.fillStyle = C.pick(T); c.shadowColor = rgba(T.a2rgb, 0.35); c.shadowBlur = flat ? 0 : 18 * S;
-        c.fillText(CLIP.title, W / 2, titleY); c.shadowBlur = 0; c.letterSpacing = '0px';
-      }
-    }
-    ctx.drawImage(X.canvas, 0, 0);
-
-    /* ---- felt ---- */
-    const fg = ctx.createLinearGradient(0, 0, W, 0); fg.addColorStop(0, T.a1); fg.addColorStop(0.5, T.a2); fg.addColorStop(1, T.a1);
-    ctx.fillStyle = fg; ctx.globalAlpha = 0.9; ctx.shadowColor = rgba(T.a2rgb, 0.4); ctx.shadowBlur = flat ? 0 : 16 * S;
-    ctx.fillRect(0, feltTop, W, G.feltH); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
-
-    /* ---- keys: the unlit sets from cache, the lit ones fresh ---- */
-    const vel = new Map(st.keys || []), ring = new Map(st.ring || []), cTags = st.cTags || {};
-    const multi = (st.keys || []).length > 1, solid = st.keyLight === 'solid';
-    const shade = (v) => { const mid = velColor(v), hi = velColor(Math.min(127, v + 26)), lo = velColor(Math.max(14, v - 52)); return { mid, hi, lo }; };
-    const keyColor = (n, on, black) => {
-      const v = st.velocity === false ? 43 : (on ? vel.get(n) : ring.get(n));
-      const c = shade(v);
-      if (on) return solid ? [c.mid, c.mid, c.mid] : [c.lo, c.mid, c.hi];
-      const base = black ? [T.b1, T.b2, T.b3] : [T.w1, T.w2, T.w3];
-      const p = black ? [0.62, 0.58, 0.52] : [0.5, 0.46, 0.42];
-      return solid ? [mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.mid, p[1], base[1])]
-        : [mixRgb(c.lo, p[0], base[0]), mixRgb(c.mid, p[1], base[1]), mixRgb(c.hi, p[2], base[2])];
-    };
-    const whiteX = new Map(), blackX = new Map();
-    { let wi = 0; for (let n = LOW; n <= HIGH; n++) { if (isBlack(n)) blackX.set(n, wi * ww - ww * 0.285); else { whiteX.set(n, wi * ww); wi++; } } }
-
-    const drawWhite = (c, n, x, on, rg) => {
-      let stops;
-      if (on || rg) stops = keyColor(n, on, false).map((q) => rgba(q, 1));
-      else stops = [rgba(T.w1, 1), rgba(T.w2, 1), rgba(T.w3, 1)];
-      const g = c.createLinearGradient(0, keysTop, 0, keysBottom); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.84, stops[1]); g.addColorStop(1, stops[2]);
-      c.fillStyle = g;
-      if (on) { const k = shade(st.velocity === false ? 43 : vel.get(n)); c.shadowColor = rgba(k.mid, 0.6); c.shadowBlur = flat ? 0 : 26 * S; }
-      c.fillRect(x, keysTop, ww, keysH); c.shadowBlur = 0;
-      c.strokeStyle = T.kline; c.lineWidth = Math.max(1, S); c.strokeRect(x + 0.5, keysTop + 0.5, ww - 1, keysH - 1);
-      if (rg) { const k = shade(ring.get(n)); c.fillStyle = rgba(k.mid, 0.9); c.fillRect(x, keysTop, ww, 5 * S); }
-      if (on && multi && n % 12 === st.rootPc) {
-        c.fillStyle = '#04121F'; c.beginPath(); c.arc(x + ww / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); c.fill();
-        c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 2 * S; c.stroke();
-      }
-      if (!on && !rg && cTags[n]) {
-        c.font = `500 ${Math.round(13 * S)}px "JetBrains Mono", monospace`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-        c.fillStyle = T.klbl; c.globalAlpha = 0.5; c.fillText(cTags[n], x + ww / 2, keysBottom - 10 * S); c.globalAlpha = 1;
-      }
-    };
-    const drawBlack = (c, n, x, on, rg) => {
-      let stops;
-      if (on || rg) stops = keyColor(n, on, true).map((q) => rgba(q, 1));
-      else stops = [rgba(T.b1, 1), rgba(T.b2, 1), rgba(T.b3, 1)];
-      const g = c.createLinearGradient(0, keysTop, 0, keysTop + bh); g.addColorStop(0, stops[0]); g.addColorStop(on ? 0.53 : 0.6, stops[1]); g.addColorStop(1, stops[2]);
-      c.fillStyle = g;
-      c.shadowColor = 'rgba(0,0,0,.5)'; c.shadowBlur = flat ? 0 : 6 * S; c.shadowOffsetY = 3 * S;
-      if (on) { const k = shade(st.velocity === false ? 43 : vel.get(n)); c.shadowColor = rgba(k.mid, 0.6); c.shadowBlur = flat ? 0 : 26 * S; c.shadowOffsetY = 0; }
-      c.fillRect(x, keysTop, bw, bh); c.shadowBlur = 0; c.shadowOffsetY = 0;
-      c.strokeStyle = rgba(T.b3, 1); c.lineWidth = Math.max(1, S); c.strokeRect(x + 0.5, keysTop + 0.5, bw - 1, bh - 1);
-      if (rg) { const k = shade(ring.get(n)); c.fillStyle = rgba(k.mid, 0.9); c.fillRect(x, keysTop, bw, 5 * S); }
-      if (on && multi && n % 12 === st.rootPc) {
-        c.fillStyle = '#04121F'; c.beginPath(); c.arc(x + bw / 2, keysTop + 12 * S, 4 * S, 0, Math.PI * 2); c.fill();
-        c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 2 * S; c.stroke();
-      }
-    };
-    const baseKey = [themeKey, flat, CLIP.keys, JSON.stringify(cTags)].join('|');
-    const WL = layerCanvas('whites', W, H), BL = layerCanvas('blacks', W, H);
-    if (WL.key !== baseKey) {
-      WL.key = baseKey; WL.ctx.clearRect(0, 0, W, H);
-      whiteX.forEach((x, n) => drawWhite(WL.ctx, n, x, false, false));
-    }
-    if (BL.key !== baseKey) {
-      BL.key = baseKey; BL.ctx.clearRect(0, 0, W, H);
-      blackX.forEach((x, n) => drawBlack(BL.ctx, n, x, false, false));
-    }
-    ctx.drawImage(WL.canvas, 0, 0);
-    whiteX.forEach((x, n) => { const on = vel.has(n), rg = !on && ring.has(n); if (on || rg) drawWhite(ctx, n, x, on, rg); });
-    ctx.drawImage(BL.canvas, 0, 0);
-    blackX.forEach((x, n) => { const on = vel.has(n), rg = !on && ring.has(n); if (on || rg) drawBlack(ctx, n, x, on, rg); });
-
-    /* ---- name tags ---- */
-    ctx.font = `600 ${Math.round(15 * S)}px "JetBrains Mono", monospace`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-    (st.tags || []).forEach((tag, i) => {
-      const row = i % 2, cx = centerPct.get(tag.n) / 100 * W;
-      const tw = ctx.measureText(tag.t).width + 16 * S, th = 24 * S, ty = nameTop + (row ? 26 * S : 0);
-      const g = ctx.createLinearGradient(0, ty, 0, ty + th);
-      if (tag.b) { g.addColorStop(0, '#fff'); g.addColorStop(1, T.a2); } else { g.addColorStop(0, T.a4); g.addColorStop(1, T.a3); }
-      ctx.shadowColor = rgba(T.a3rgb, 0.5); ctx.shadowBlur = flat ? 0 : 16 * S;
-      ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(cx - tw / 2, ty, tw, th, 6 * S); ctx.fill(); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#04121D'; ctx.fillText(tag.t, cx, ty + th / 2 + 1);
-      const sg = ctx.createLinearGradient(0, ty + th, 0, feltTop); sg.addColorStop(0, T.a3); sg.addColorStop(1, rgba(T.a3rgb, 0));
-      ctx.strokeStyle = sg; ctx.lineWidth = Math.max(1, S); ctx.beginPath(); ctx.moveTo(cx, ty + th); ctx.lineTo(cx, feltTop); ctx.stroke();
-    });
-    ctx.textBaseline = 'alphabetic';
-    return true;
+    S.video = live ? bgVideo : null; S.videoW = live ? bgVideo.videoWidth : 0; S.videoH = live ? bgVideo.videoHeight : 0;
+    return CLIPDRAW.draw(S, FRAME);
   }
   /* ================= keys pop-out ================= */
   if (VIEW === 'keys') {
@@ -615,7 +452,15 @@
     if (m === 'flat') return true;
     return FLAT_KEYS.has(keysel.value);
   }
-  const pcName = (pc) => (useFlats() ? FL : SH)[((pc % 12) + 12) % 12];
+  /* Auto spells by the key, and in a sharp key (or C) a chromatic note is
+     named the way a player reads it: the ♭2, ♭3, ♭6 and ♭7 are flats — D♭9
+     is the tritone sub in C, not C♯9 — while the ♯4 stays sharp. */
+  const pcName = (pc) => {
+    pc = ((pc % 12) + 12) % 12;
+    if (useFlats()) return FL[pc];
+    if (spellsel.value === 'auto' && [1, 3, 8, 10].includes(degree(pc))) return FL[pc];
+    return SH[pc];
+  };
   const noteName = (n) => pcName(n % 12) + (Math.floor(n / 12) - 1);
   function keyPc() {
     const k = keysel.value;
@@ -648,6 +493,7 @@
     [[0, 3, 4, 7, 10], '7♯9'], [[0, 3, 4, 10], '7♯9'],
     [[0, 4, 6, 7, 10], '7♯11'], [[0, 4, 6, 10], '7♭5'],
     [[0, 4, 8, 10], '7♯5'], [[0, 2, 4, 8, 10], '9♯5'],
+    [[0, 3, 4, 8, 10], '7♯9♭13'], [[0, 1, 4, 8, 10], '7♭9♭13'], [[0, 1, 3, 4, 8, 10], '7alt'],
     [[0, 5, 7, 11], 'maj7sus4'], [[0, 2, 5, 7], 'sus4(add9)']
   ];
   const TMAP = new Map();
@@ -656,11 +502,23 @@
     if (!TMAP.has(k)) TMAP.set(k, { name, rank: i });
   });
 
+  /* the templates as numbers, parsed once */
+  const TLIST = [...TMAP].map(([k, v]) => [k.split(',').map(Number), v]);
+  /* the same shape always gets the same name: remember it */
+  const detectMemo = new Map();
   function detect(notes) {
     if (!notes.length) return null;
     const sorted = notes.slice().sort((a, b) => a - b);
     const bassPc = sorted[0] % 12;
     const pcs = [...new Set(sorted.map((n) => n % 12))];
+    const memoKey = bassPc + '|' + pcs.join(',');
+    if (detectMemo.has(memoKey)) return detectMemo.get(memoKey);
+    const named = detectShape(bassPc, pcs);
+    if (detectMemo.size > 4000) detectMemo.clear();
+    detectMemo.set(memoKey, named);
+    return named;
+  }
+  function detectShape(bassPc, pcs) {
     if (pcs.length === 1) return { root: bassPc, q: '', bass: bassPc, single: true };
     let best = null;
     for (const r of pcs) {
@@ -673,8 +531,7 @@
     if (best) return best;
     for (const r of pcs) {
       const set = new Set(pcs.map((p) => ((p - r) % 12 + 12) % 12));
-      for (const [k, v] of TMAP) {
-        const iv = k.split(',').map(Number);
+      for (const [iv, v] of TLIST) {
         if (iv.length - set.size !== 1) continue;
         const miss = iv.filter((x) => !set.has(x));
         if (miss.length === 1 && (miss[0] === 7 || miss[0] === 2)) {
@@ -729,6 +586,8 @@
   }
 
   function paint() {
+    paintAt = performance.now();
+    if (paintTimer) { clearTimeout(paintTimer); paintTimer = 0; }
     const notes = sounding();
     const ch = detect(notes), rootPc = ch ? ch.root : -1;
     const solfaMode = (labelMode === 'solfa');
@@ -749,7 +608,8 @@
     }));
 
     const vs = [...held.values()];
-    vbar.style.width = vs.length ? Math.round(Math.max(...vs) / 127 * 100) + '%' : '0%';
+    const vw = vs.length ? Math.round(Math.max(...vs) / 127 * 100) + '%' : '0%';
+    if (vbar._w !== vw) { vbar._w = vw; vbar.style.width = vw; }
 
     let text;
     if (!ch) {
@@ -810,16 +670,15 @@
       text
     );
 
-    chordEl.className = state.chordClass;
-    chordEl.innerHTML = state.chordHTML;
-    numEl.className = state.numClass;
-    numEl.innerHTML = state.numHTML;
-    romanEl.textContent = state.romanText;
-    metaEl.innerHTML = state.metaHTML;
+    setClass(chordEl, state.chordClass); setHTML(chordEl, state.chordHTML);
+    setClass(numEl, state.numClass); setHTML(numEl, state.numHTML);
+    if (romanEl._t !== state.romanText) { romanEl._t = state.romanText; romanEl.textContent = state.romanText; }
+    setHTML(metaEl, state.metaHTML);
     paintKeys(state);
 
     lastPublished = state;
     if (BRIDGE) BRIDGE.publish(state);
+    if (FRAME.active) clipPush();
   }
 
   function applyTheme(persist = true) {
@@ -857,13 +716,13 @@
     ringing.delete(n);                        // struck again: back in the chord
     held.set(n, v);
     sustained.add(n);
-    paint();
+    paintSoon();
   };
 
   const off = (n) => {
     held.delete(n);
     if (!sustain) { sustained.delete(n); ringing.delete(n); }
-    paint();
+    paintSoon();
   };
 
   function setSustain(b) {
@@ -875,7 +734,7 @@
       sustained.forEach((n) => { if (!held.has(n)) sustained.delete(n); });
       ringing.clear();
     }
-    paint();
+    paintSoon();
   }
 
   /* mouse */
@@ -1409,11 +1268,11 @@
   /* ================= toast ================= */
   const toastEl = $('toast');
   let toastTimer = 0;
-  function toast(msg) {
+  function toast(msg, ms) {
     toastEl.textContent = msg;
     toastEl.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2800);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms || 2800);
   }
 
   /* Recordings go to Documents/Amanorsac Studio/Chordlight 88/Recordings in
@@ -1486,19 +1345,25 @@
     ]);
   }
 
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   function recFace() {
     const s = Math.floor(performance.now() / 1000 - REC.start);
-    recBtn.textContent = `■ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    recBtn.textContent = TRIAL.on ? `■ ${mmss(Math.min(s, TRIAL.max))} / ${mmss(TRIAL.max)}` : `■ ${mmss(s)}`;
+    /* Free Trial: a take stops at one minute (a video's own clock stops it
+       when the take belongs to a video) */
+    if (TRIAL.on && s >= TRIAL.max && !VID.rec) { stopRec(); trialToast(); }
   }
+  function trialToast() { toast('Free trial: recordings stop at 1 minute. The full version records without a limit.'); }
   /* `base` is the name shared with a video or WAV started at the same
      moment, so the three files sort together in the folder. */
   function startRec(base, withWav) {
+    if (TRIAL.on && BRIDGE && BRIDGE.trialTake) BRIDGE.trialTake();
     REC.on = true; REC.start = performance.now() / 1000; REC.events = [];
     REC.base = base || `Chordlight take ${stamp()}`;
     recBtn.setAttribute('aria-pressed', 'true');
     recBtn.title = 'Stop and save the take';
     recFace();
-    REC.timer = setInterval(recFace, 500);
+    REC.timer = setInterval(recFace, TRIAL.on ? 200 : 500);
     if (withWav) startWav(REC.base).catch((err) => toast('No WAV — ' + (err.message || err)));
     if (alsoPack && !PACK.on) startPack(REC.base, 'rec').catch((err) => toast('No Chordlight file — ' + (err.message || err)));
   }
@@ -1521,8 +1386,11 @@
   }
   recBtn.addEventListener('click', () => (REC.on ? stopRec() : startRec(null, alsoWav)));
   keepBtn.addEventListener('click', () => {
-    if (!CAP.buf.length) { toast('Nothing in the last five minutes'); return; }
-    keepRecording(`Chordlight keep ${stamp()}.mid`, writeSMF(CAP.buf));
+    /* Free Trial: Keep saves the last minute, not the last five */
+    const from = TRIAL.on ? performance.now() / 1000 - TRIAL.max + 0.5 : -Infinity;
+    const buf = TRIAL.on ? CAP.buf.filter((e) => e.t >= from) : CAP.buf;
+    if (!buf.length) { toast(TRIAL.on ? 'Nothing in the last minute' : 'Nothing in the last five minutes'); return; }
+    keepRecording(`Chordlight keep ${stamp()}.mid`, writeSMF(buf));
   });
 
   /* ================= video ================= */
@@ -1530,11 +1398,28 @@
   const vidBtn = $('vidbtn');
   function vidFace() {
     const s = Math.floor(performance.now() / 1000 - VID.start);
-    vidBtn.textContent = `■ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    vidBtn.textContent = TRIAL.on ? `■ ${mmss(Math.min(s, TRIAL.max))} / ${mmss(TRIAL.max)}` : `■ ${mmss(s)}`;
+    if (TRIAL.on && s >= TRIAL.max && VID.rec) { stopVideo(); trialToast(); }
   }
   const soundSel = $('videosound'), audioInSel = $('audioin'), vocalInSel = $('vocalin'),
         duckEl = $('duck'), duckV = $('duckv'), offsetEl = $('aoffset'), offsetV = $('aoffsetv'), qualSel = $('vquality');
   let videoSound = 'system', audioInput = '', vocalInput = '', duck = 9, audioOffset = 0, videoQuality = 'good';
+  /* System sound is a Windows feature in this release (main.js, SYSTEM_SOUND).
+     On a machine without it the two System options are greyed and a saved
+     System setting falls back to Inputs. */
+  let systemSound = true;
+  function applySystemSound(on) {
+    systemSound = !!on;
+    [...soundSel.options].forEach((o) => {
+      if (o.value !== 'system' && o.value !== 'both') return;
+      o.disabled = !systemSound;
+      if (!systemSound && !o.textContent.includes('macOS 14.2')) o.textContent += ' — needs macOS 14.2+';
+    });
+    if (!systemSound && (videoSound === 'system' || videoSound === 'both')) {
+      videoSound = 'input'; soundSel.value = videoSound; store({ videoSound });
+      toast('System sound is not available on this Mac yet — the clip records your inputs');
+    }
+  }
   const clipTitleEl = $('cliptitle'), clipKeysEl = $('clipkeys'), titleFontEl = $('titlefont'), titleSizeEl = $('titlesize'), titleSizeV = $('titlesizev');
   titleFontEl.addEventListener('change', () => { CLIP.font = titleFontEl.value; store({ titleFont: CLIP.font }); paint(); });
   titleSizeEl.addEventListener('input', () => { CLIP.size = +titleSizeEl.value; titleSizeV.textContent = CLIP.size; store({ titleSize: CLIP.size }); paint(); });
@@ -1653,9 +1538,9 @@
   /* ---------- WAV: the mix, uncompressed ----------
      24-bit, 48 kHz, stereo, tapped after the delay so it is exactly what the
      clip hears. Samples are packed to 24-bit as they arrive (288 KB/s) rather
-     than kept as floats. A ScriptProcessor is old but needs no extra file
-     under the CSP; 4096 frames is 85 ms of latency that does not matter to
-     a file. */
+     than kept as floats. The packing runs on the audio thread (wav-tap.js),
+     so a busy window can never cost the file a block; where an audio
+     worklet cannot load, a ScriptProcessor in the window does it instead. */
   const WAV = { on: false, owner: '', tap: null, chunks: [], frames: 0, base: '' };
   const alsoMidiBtn = $('alsomidi'), alsoWavBtn = $('alsowav'), fmtBadge = $('fmtbadge');
   let alsoMidi = false, alsoWav = false;
@@ -1672,8 +1557,24 @@
     if (!MIX.ctx) await buildMix(null);          // Rec without Advanced open: inputs only
     if (!MIX.ctx) throw new Error('no audio graph');
     const ctx = MIX.ctx;
-    const tap = ctx.createScriptProcessor(4096, 2, 2);
     WAV.chunks = []; WAV.frames = 0; WAV.base = base; WAV.on = true; WAV.owner = MIX.recording ? 'video' : 'rec';
+    /* the audio thread first */
+    try {
+      if (!ctx._wavTap) {
+        const inline = window.CHORDLIGHT_INLINE && window.CHORDLIGHT_INLINE.wav;
+        ctx._wavTap = ctx.audioWorklet.addModule(inline ? URL.createObjectURL(new Blob([inline], { type: 'text/javascript' })) : 'wav-tap.js');
+      }
+      await ctx._wavTap;
+      if (!WAV.on || ctx !== MIX.ctx) return;
+      const node = new AudioWorkletNode(ctx, 'chordlight-wav-tap', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
+      node.port.onmessage = (e) => { if (!WAV.on || !(e.data instanceof Uint8Array)) return; WAV.chunks.push(e.data); WAV.frames += e.data.length / 6; };
+      MIX.delay.connect(node);
+      const mute = ctx.createGain(); mute.gain.value = 0;
+      node.connect(mute); mute.connect(ctx.destination);
+      WAV.tap = node; WAV.mute = mute;
+      return;
+    } catch { ctx._wavTap = null; /* the window, then */ }
+    const tap = ctx.createScriptProcessor(4096, 2, 2);
     tap.onaudioprocess = (e) => {
       if (!WAV.on) return;
       const L = e.inputBuffer.getChannelData(0), R = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : L;
@@ -1695,6 +1596,7 @@
   function stopWav() {
     if (!WAV.on) return;
     WAV.on = false;
+    try { if (WAV.tap && WAV.tap.port) WAV.tap.port.postMessage('stop'); } catch { /* gone */ }
     try { WAV.tap.disconnect(); WAV.mute.disconnect(); } catch { /* graph already closed */ }
     const rate = 48000, bits = 24, ch = 2, dataLen = WAV.frames * ch * bits / 8;
     const head = new DataView(new ArrayBuffer(44));
@@ -1856,9 +1758,118 @@
   [audioInSel, vocalInSel].forEach((sel) => sel.addEventListener('change', monitorInputs));
 
   /* The frame runs for two customers: a clip being recorded (at the clip's
-     rate) and the Preview panel (15 fps, enough to see the layout). Either
-     keeps it alive; when both are gone the canvas is dropped. */
-  const PREVIEW = { on: false, box: $('preview'), el: $('previewcanvas'), ctx: null, size: 480 };
+     rate) and the Preview panel (up to 30 fps). Either keeps it alive; when
+     both are gone the canvas is dropped.
+
+     Two hosts. Normally the clip lives on its own thread (clip-worker.js):
+     the window sends it a snapshot when something changes and it does the
+     drawing and feeds the recorder at a steady rate, so a fast passage can
+     never make the clip stutter or the keys fall behind. If this machine
+     cannot start that thread, the window draws the clip itself, as before. */
+  const PREVIEW = { on: false, box: $('preview'), el: $('previewcanvas'), ctx: null, size: 480, off: null };
+  const CW = { worker: null, mode: '', ready: null, grabs: new Map(), gid: 0, picUrl: null, feedGen: 0, feedTimer: 0, safety: 0, size: '' };
+
+  function clipFonts() {
+    const inline = window.CHORDLIGHT_INLINE && window.CHORDLIGHT_INLINE.fonts;
+    const bytes = (f) => { if (!BRIDGE || !BRIDGE.asset) return null; const b = BRIDGE.asset(`fonts/${f}.woff2`); return b ? b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) : null; };
+    return [['Inter', 400, 'inter-400'], ['Inter', 500, 'inter-500'], ['Inter', 600, 'inter-600'], ['Inter', 700, 'inter-700'],
+      ['JetBrains Mono', 400, 'jetbrains-mono-400'], ['JetBrains Mono', 500, 'jetbrains-mono-500'], ['JetBrains Mono', 600, 'jetbrains-mono-600'],
+      ['Barlow Condensed', 600, 'barlow-condensed-600'], ['Barlow Condensed', 700, 'barlow-condensed-700']]
+      .map(([family, weight, f]) => ({ family, weight, data: bytes(f), url: (inline && inline[f]) || new URL(`fonts/${f}.woff2`, location.href).href }));
+  }
+  /* decided once: the worker if it starts and its fonts load, else the window */
+  function clipMode() {
+    if (CW.ready) return CW.ready;
+    CW.ready = new Promise((resolve) => {
+      const useMain = () => {
+        if (CW.mode) return;
+        if (CW.worker) { try { CW.worker.terminate(); } catch { /* gone */ } }
+        CW.worker = null; CW.mode = 'main'; resolve('main');
+      };
+      if (!CLIPDRAW || typeof Worker !== 'function' || typeof OffscreenCanvas !== 'function'
+        || typeof MediaStreamTrackGenerator !== 'function' || !HTMLCanvasElement.prototype.transferControlToOffscreen) { useMain(); return; }
+      /* ways to start the thread, tried in turn: the bench's inline copy, the
+         file beside this page, the same file read by the app and run from
+         memory. If none starts and loads its fonts, the window draws. */
+      const fromText = (txt) => new Worker(URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })));
+      const inline = window.CHORDLIGHT_INLINE && window.CHORDLIGHT_INLINE.worker;
+      const ways = inline ? [() => fromText(inline)] : [
+        () => new Worker('clip-worker.js'),
+        () => {
+          const a = BRIDGE && BRIDGE.asset && BRIDGE.asset('clip-draw.js'), b = BRIDGE && BRIDGE.asset && BRIDGE.asset('clip-worker.js');
+          if (!a || !b) throw new Error('no assets');
+          const dec = new TextDecoder();
+          return fromText(dec.decode(a) + '\n' + dec.decode(b));
+        }
+      ];
+      let timer = 0;
+      const next = () => {
+        clearTimeout(timer);
+        if (CW.worker) { try { CW.worker.terminate(); } catch { /* gone */ } CW.worker = null; }
+        const way = ways.shift();
+        if (!way) { useMain(); return; }
+        try { CW.worker = way(); } catch { next(); return; }
+        timer = setTimeout(next, 6000);
+        CW.worker.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); if (!CW.mode) next(); };
+        CW.worker.onmessage = onMsg;
+        CW.worker.postMessage({ t: 'fonts', list: clipFonts() });
+      };
+      const onMsg = (e) => {
+        const m = e.data || {};
+        if (m.t === 'ready') {
+          clearTimeout(timer);
+          if (CW.mode) return;
+          if (m.ok && m.gen) { CW.mode = 'worker'; resolve('worker'); } else next();
+        } else if (m.t === 'grab') {
+          const cb = CW.grabs.get(m.id); CW.grabs.delete(m.id); if (cb) cb(m.blob);
+        }
+      };
+      next();
+    });
+    return CW.ready;
+  }
+
+  /* worker: what to draw, sent whenever the window repaints (and checked
+     four times a second for anything that changed the look without a note) */
+  function clipPush() {
+    if (!FRAME.active || CW.mode !== 'worker') return;
+    CW.worker.postMessage({ t: 'snap', S: clipSnap() });
+    videoFeed();
+    const want = (backdrop === 'picture' && picture && picture.kind === 'picture') ? picture.url : '';
+    if (want !== CW.picUrl) sendPicture();
+  }
+  async function sendPicture() {
+    const url = (backdrop === 'picture' && picture && picture.kind === 'picture') ? picture.url : '';
+    CW.picUrl = url;
+    let bitmap = null;
+    if (url) {
+      try {
+        const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+        bitmap = await createImageBitmap(im);
+      } catch { bitmap = null; }
+    }
+    if (CW.picUrl !== url || !CW.worker) { if (bitmap) bitmap.close(); return; }   // changed again meanwhile
+    CW.worker.postMessage({ t: 'pic', key: picKeyNow(), bitmap }, bitmap ? [bitmap] : []);
+  }
+  /* worker: a video backdrop is decoded here and handed over frame by frame */
+  function videoFeed() {
+    const want = FRAME.active && CW.mode === 'worker' && backdrop === 'video' && picture && picture.kind === 'video';
+    if (want === !!CW.feedTimer) return;
+    clearInterval(CW.feedTimer); CW.feedTimer = 0;
+    const gen = ++CW.feedGen;
+    if (!want) { CW.worker.postMessage({ t: 'video', bitmap: null }); return; }
+    let busy = false;
+    CW.feedTimer = setInterval(() => {
+      if (busy || gen !== CW.feedGen || bgVideo.readyState < 2 || !bgVideo.videoWidth) return;
+      busy = true;
+      createImageBitmap(bgVideo).then((bm) => {
+        busy = false;
+        if (gen === CW.feedGen && CW.worker) CW.worker.postMessage({ t: 'video', bitmap: bm }, [bm]); else bm.close();
+      }, () => { busy = false; });
+    }, 1000 / (FRAME.rec ? FRAME.fps : 30));
+  }
+
+  /* the window's own loop — the fallback host */
   function frameLoop(ts) {
     if (!FRAME.rec && !PREVIEW.on) { FRAME.raf = 0; return; }
     const fps = FRAME.rec ? FRAME.fps : 30;
@@ -1876,11 +1887,23 @@
     FRAME.raf = requestAnimationFrame(frameLoop);
   }
   const runFrames = () => { if (!FRAME.raf) FRAME.raf = requestAnimationFrame(frameLoop); };
+
   async function ensureFrame() {
     const [W, H] = frameSize();
+    FRAME.active = true;
+    const mode = await clipMode();
+    if (mode === 'worker') {
+      FRAME.W = W; FRAME.H = H;
+      if (CW.size !== W + 'x' + H) { CW.size = W + 'x' + H; CW.worker.postMessage({ t: 'size', W, H }); }
+      clipPush();
+      if (!CW.safety) CW.safety = setInterval(clipPush, 250);
+      if (backdrop === 'video' && picture && picture.kind === 'video') bgVideo.play().catch(() => {});
+      return;
+    }
     if (!FRAME.canvas || FRAME.W !== W || FRAME.H !== H) {
       const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
       Object.assign(FRAME, { canvas, ctx: canvas.getContext('2d', { alpha: false }), W, H, last: 0 });
+      if (CLIPDRAW) CLIPDRAW.reset();
     }
     try {
       await document.fonts.load(`700 ${Math.round(132 * H / 1080)}px "Barlow Condensed"`);
@@ -1889,13 +1912,40 @@
       await document.fonts.load(`${F.weight} ${Math.round(CLIP.size * H / 1080)}px ${F.css}`);
     } catch { /* system fonts then */ }
     if (backdrop === 'picture' && picture && picture.kind === 'picture' && (!FRAME.pic || FRAME.pic.src !== picture.url)) {
-      await new Promise((ok) => { const im = new Image(); im.onload = () => { FRAME.pic = im; FRAME.key = ''; ok(); }; im.onerror = () => ok(); im.src = picture.url; });
+      await new Promise((ok) => { const im = new Image(); im.onload = () => { FRAME.pic = im; if (CLIPDRAW) CLIPDRAW.reset(); ok(); }; im.onerror = () => ok(); im.src = picture.url; });
     }
     if (backdrop === 'video' && picture && picture.kind === 'video') bgVideo.play().catch(() => {});
   }
+  /* nothing needs a frame any more: let the memory go */
+  function releaseFrame() {
+    FRAME.active = false;
+    if (CW.mode === 'worker') {
+      clearInterval(CW.safety); CW.safety = 0;
+      videoFeed();
+      CW.worker.postMessage({ t: 'free' }); CW.size = ''; CW.picUrl = null;
+      return;
+    }
+    cancelAnimationFrame(FRAME.raf); FRAME.raf = 0; FRAME.canvas = null; FRAME.ctx = null; FRAME.pic = null;
+    if (CLIPDRAW) CLIPDRAW.free();
+  }
+  /* a new picture or video was chosen while the clip is live */
+  function clipPictureChanged() {
+    FRAME.pic = null; CW.picUrl = null;
+    if (CLIPDRAW) CLIPDRAW.reset();
+    if (FRAME.active) { clearInterval(CW.feedTimer); CW.feedTimer = 0; ensureFrame(); }
+  }
   async function startFrames(fps) {
     await ensureFrame();
-    FRAME.rec = true; FRAME.fps = fps; FRAME.key = ''; FRAME.fed = 0;
+    FRAME.rec = true; FRAME.fps = fps; FRAME.fed = 0;
+    if (CW.mode === 'worker') {
+      const gen = new MediaStreamTrackGenerator({ kind: 'video' });
+      clearInterval(CW.feedTimer); CW.feedTimer = 0; videoFeed();    // the feed follows the clip's rate
+      CW.worker.postMessage({ t: 'snap', S: clipSnap() });
+      CW.worker.postMessage({ t: 'rec', writable: gen.writable, fps }, [gen.writable]);
+      FRAME.track = gen;
+      return new MediaStream([gen]);
+    }
+    if (CLIPDRAW) CLIPDRAW.reset();
     drawFrame();
     runFrames();
     const stream = FRAME.canvas.captureStream(fps);
@@ -1905,25 +1955,43 @@
   function stopFrames() {
     FRAME.rec = false; FRAME.track = null;
     PREVIEW.box.classList.remove('rec');
-    if (!PREVIEW.on) { cancelAnimationFrame(FRAME.raf); FRAME.raf = 0; FRAME.canvas = null; FRAME.ctx = null; FRAME.pic = null; }
+    if (CW.mode === 'worker') { CW.worker.postMessage({ t: 'stop' }); clearInterval(CW.feedTimer); CW.feedTimer = 0; videoFeed(); }
+    if (!PREVIEW.on) releaseFrame();
   }
 
   /* ---------- Preview: what the clip will look like, live ---------- */
   const previewBtn = $('previewbtn');
   function sizePreview() {
     const w = PREVIEW.size, h = Math.round(w * 9 / 16), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
     PREVIEW.box.style.setProperty('--pw', w + 'px');
-    PREVIEW.el.width = Math.round(w * dpr); PREVIEW.el.height = Math.round(h * dpr);
-    PREVIEW.ctx = PREVIEW.el.getContext('2d', { alpha: false });
-    $('previewlabel').textContent = `Clip preview · ${FRAME.W || frameSize()[0]}×${FRAME.H || frameSize()[1]}`;
+    if (CW.mode === 'worker') {
+      if (!PREVIEW.off) {
+        PREVIEW.off = PREVIEW.el.transferControlToOffscreen();
+        CW.worker.postMessage({ t: 'preview', canvas: PREVIEW.off, w: pw, h: ph, on: PREVIEW.on }, [PREVIEW.off]);
+      } else CW.worker.postMessage({ t: 'preview', w: pw, h: ph, on: PREVIEW.on });
+    } else {
+      PREVIEW.el.width = pw; PREVIEW.el.height = ph;
+      PREVIEW.ctx = PREVIEW.el.getContext('2d', { alpha: false });
+    }
+    $('previewlabel').textContent = `Clip preview · ${FRAME.W || frameSize()[0]}×${FRAME.H || frameSize()[1]}${CW.mode === 'worker' ? ' · own thread' : ''}`;
   }
   async function showPreview(v) {
     PREVIEW.on = v;
     PREVIEW.box.hidden = !v;
     previewBtn.setAttribute('aria-pressed', String(v));
     previewBtn.classList.toggle('on', v);
-    if (v) { await ensureFrame(); sizePreview(); FRAME.key = ''; drawFrame(); if (PREVIEW.ctx) PREVIEW.ctx.drawImage(FRAME.canvas, 0, 0, PREVIEW.el.width, PREVIEW.el.height); runFrames(); }
-    else if (!FRAME.rec) { cancelAnimationFrame(FRAME.raf); FRAME.raf = 0; FRAME.canvas = null; FRAME.ctx = null; FRAME.pic = null; }
+    if (v) {
+      await ensureFrame(); sizePreview();
+      if (CW.mode !== 'worker') {
+        if (CLIPDRAW) CLIPDRAW.reset();
+        drawFrame(); if (PREVIEW.ctx && FRAME.canvas) PREVIEW.ctx.drawImage(FRAME.canvas, 0, 0, PREVIEW.el.width, PREVIEW.el.height);
+        runFrames();
+      }
+    } else {
+      if (CW.mode === 'worker') CW.worker.postMessage({ t: 'preview', on: false });
+      if (!FRAME.rec) releaseFrame();
+    }
   }
   previewBtn.addEventListener('click', () => showPreview(!PREVIEW.on));
   $('previewclose').addEventListener('click', () => showPreview(false));
@@ -1949,7 +2017,24 @@
     });
     head.addEventListener('pointerup', () => { drag = null; });
   })();
-  if (!BRIDGE) window.chordlightFrame = () => (FRAME.canvas ? FRAME.canvas.toDataURL('image/png') : null);   // bench build: look at a frame
+  /* bench build: look at a frame (a data URL, from whichever host draws) */
+  if (!BRIDGE) window.chordlightFrame = () => new Promise((ok) => {
+    if (CW.mode === 'worker') {
+      const id = ++CW.gid;
+      CW.grabs.set(id, (blob) => { if (!blob) { ok(null); return; } const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+      CW.worker.postMessage({ t: 'grab', id });
+    } else ok(FRAME.canvas ? FRAME.canvas.toDataURL('image/png') : null);
+  });
+  if (!BRIDGE) window.chordlightHost = () => CW.mode;
+  /* bench build, lesson engine: draw the clip now, on the window's own host,
+     and hand back the frame only when it changed (null when it did not) */
+  if (!BRIDGE) window.chordlightLesson = {
+    start: async () => { await ensureFrame(); return CW.mode; },
+    frame: (type) => {
+      if (paintTimer) paint();
+      return drawFrame() ? FRAME.canvas.toDataURL(type || 'image/jpeg', 0.93) : null;
+    }
+  };
   if (!BRIDGE) window.chordlightClip = CLIP;   // bench build: poke the clip look
 
   /* System sound — what the keyboard is triggering in a DAW or Kontakt — is
@@ -1957,13 +2042,13 @@
      from the desktop capturer, asked for sound only; if that is refused, a
      screen capture is opened for its audio and its picture thrown away. */
   async function systemAudio() {
-    if (!BRIDGE) return null;
+    if (!BRIDGE || !systemSound) return null;   // never asks for the display on a Mac
     try {
       const st = await navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSource: 'desktop' } }, video: false });
       const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
     } catch { /* next */ }
     try {
-      BRIDGE.captureKind('screen');
+      BRIDGE.captureKind('window');
       const st = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       st.getVideoTracks().forEach((t) => t.stop());
       const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
@@ -1973,7 +2058,7 @@
   }
 
   async function buildStream() {
-    const wantSystem = videoSound === 'system' || videoSound === 'both';
+    const wantSystem = systemSound && (videoSound === 'system' || videoSound === 'both');
     const Q = QUALITY[videoQuality] || QUALITY.good;
     const picture = await startFrames(Q.fps);
     const tracks = [picture.getVideoTracks()[0]];
@@ -2008,6 +2093,7 @@
     VID.chunks = [];
     const Q = QUALITY[videoQuality] || QUALITY.good;
     const base = `Chordlight video ${stamp()}`;
+    if (TRIAL.on && BRIDGE && BRIDGE.trialTake) BRIDGE.trialTake();
     VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Q.vbps, audioBitsPerSecond: Q.abps });
     VID.rec.ondataavailable = (e) => { if (e.data.size) VID.chunks.push(e.data); };
     VID.rec.onstop = async () => {
@@ -2023,15 +2109,17 @@
     if (alsoWav) startWav(base).catch((err) => toast('No WAV — ' + (err.message || err)));
     if (alsoPack) startPack(base, 'video').catch((err) => toast('No Chordlight file — ' + (err.message || err)));
     VID.rec.start(1000);
+    if (BRIDGE && BRIDGE.recBusy) BRIDGE.recBusy(true);
     PREVIEW.box.classList.add('rec');
     VID.start = performance.now() / 1000;
     vidBtn.setAttribute('aria-pressed', 'true');
     vidBtn.title = 'Stop and save the video';
     vidFace();
-    VID.timer = setInterval(vidFace, 500);
+    VID.timer = setInterval(vidFace, TRIAL.on ? 200 : 500);
   }
   function stopVideo() {
     clearInterval(VID.timer);
+    if (BRIDGE && BRIDGE.recBusy) BRIDGE.recBusy(false);
     vidBtn.setAttribute('aria-pressed', 'false');
     vidBtn.textContent = '◉ Video';
     vidBtn.title = 'Record a video of this window';
@@ -2112,8 +2200,7 @@
       backdrop = picture.kind; backdropSel.value = backdrop;
       store({ backdrop });
       picFace(); paintBackdrop();
-      FRAME.pic = null; FRAME.key = ''; if (LAYER.bg) LAYER.bg.key = '';
-      if (PREVIEW.on || FRAME.rec) ensureFrame();
+      clipPictureChanged();
       /* the pop-outs fetch the new picture themselves */
       if (BRIDGE) BRIDGE.publish(Object.assign({}, lastPublished || {}, { backdrop, tint, tintColor, pictureChanged: true }));
       paint();
@@ -2190,6 +2277,7 @@
 
   /* ================= settings ================= */
   let settingsCache = {};
+  let APPINFO = null;
   function store(patch) {
     Object.assign(settingsCache, patch);
     if (BRIDGE) BRIDGE.setSettings(patch);
@@ -2222,6 +2310,7 @@
   const whenDate = (ms) => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   function paintLicense(st) {
     LIC = st || LIC;
+    if (TRIAL.on) { paintTrial(TRIAL.st); return; }
     if (LIC.free) {
       aboutLic.textContent = 'Ships unlicensed — no activation, no account';
       $('privacynote').textContent = 'Chordlight makes no network requests of any kind. It never reads your sessions or presets, never sends audio or MIDI anywhere, and contains no analytics or telemetry. Updates are handled by Amanorsac Hub, not by this app.';
@@ -2255,6 +2344,44 @@
     BRIDGE.onLicense(paintLicense);
     BRIDGE.licenseStatus().then(paintLicense).catch(() => {});
   }
+
+  /* ---------- Free Trial edition ----------
+     The name says Free Trial everywhere — title bar, About, the window title
+     and a small mark in every recorded clip. A badge counts the days down.
+     When the trial ends the main process closes this window itself. */
+  function paintTrial(st) {
+    if (st) TRIAL.st = st;
+    if (!TRIAL.on) return;
+    st = TRIAL.st || { daysLeft: 7 };
+    document.title = 'Chordlight 88 Free Trial';
+    $('trialtag').hidden = false;
+    const left = st.daysLeft || 0;
+    const badge = $('trialbadge');
+    badge.hidden = false;
+    badge.textContent = `Free Trial · ${left} day${left === 1 ? '' : 's'} left`;
+    badge.classList.toggle('warn', left <= 2);
+    badge.title = st.endsAt ? `The free trial ends ${whenDate(st.endsAt)}. Recordings stop at 1 minute.` : 'Recordings stop at 1 minute.';
+    $('abouttitle').textContent = 'Chordlight 88 Free Trial';
+    aboutLic.textContent = st.endsAt
+      ? `Free trial · ${left} day${left === 1 ? '' : 's'} left · ends ${whenDate(st.endsAt)} · recordings up to 1 minute`
+      : 'Free trial · 7 days · recordings up to 1 minute';
+    $('privacynote').textContent = 'The free trial checks the time with amanorsac.studio when you are online (one request that sends nothing about you or this computer), so the 7 days are counted fairly. It never reads your sessions or presets, never sends audio or MIDI anywhere, and contains no analytics or telemetry.';
+    licRow.hidden = true; actScrim.hidden = true; licBadge.hidden = true;
+    $('buyfull').hidden = false;
+  }
+  $('trialbadge').addEventListener('click', () => BRIDGE && BRIDGE.openExternal('https://amanorsac.studio'));
+  if (BRIDGE && BRIDGE.onRecovered) BRIDGE.onRecovered((r) => {
+    const why = r && r.reason === 'oom' ? 'it ran out of memory' : 'the recorder stopped unexpectedly';
+    toast(`Chordlight restarted — ${why}. Your settings are kept.` + (r && r.file ? ' A log was saved in About › Logs.' : ''), 9000);
+  });
+  if (BRIDGE && BRIDGE.trialStatus) {
+    BRIDGE.trialStatus().then((st) => {
+      if (!st || !st.trial) return;
+      TRIAL.on = true; TRIAL.max = st.maxRecSeconds || 60;
+      paintTrial(st); paint();
+    }).catch(() => {});
+    if (BRIDGE.onTrial) BRIDGE.onTrial((st) => paintTrial(st));
+  } else if (TRIAL.on) paintTrial(null);
 
   const setup = $('setup'), setupbtn = $('setupbtn'), advanced = $('advanced'), advbtn = $('advbtn');
   let advOpen = false;
@@ -2331,12 +2458,18 @@
         try { await loadAny(bytes, name, false); toast('Cued  ' + name); }
         catch (err) { toast('Could not open ' + name + ' — ' + (err.message || err)); }
       });
+      APPINFO = info;
       if (info.platform === 'darwin') document.body.classList.add('mac');
+      if (info.systemSound === false && !settingsCache.videoSound) videoSound = 'input';   // a Mac's first run: Inputs
       const v = document.querySelector('.wordmark span');
       if (v) v.textContent = 'Amanorsac Studio · v' + info.version;
       $('aboutversion').textContent = info.version;
       $('aboutruntime').textContent = 'Electron ' + info.electron + ' · Chromium ' + info.chrome;
       $('aboutprefs').textContent = info.preferencesFile;
+      $('aboutsys').textContent = info.systemSound
+        ? 'Available — Video sound › System records what is playing'
+        : 'Not on macOS in this version (Apple needs macOS 14.2+ and a newer runtime — coming in 2.1). Inputs and the built-in clip record as usual.';
+      $('openlogs').addEventListener('click', () => BRIDGE.openLogs && BRIDGE.openLogs());
     } else {
       try { settingsCache = JSON.parse(localStorage.getItem('chordlight.settings') || '{}'); } catch { settingsCache = {}; }
     }
@@ -2348,6 +2481,7 @@
     if (settingsCache.keySize) { ksize.value = settingsCache.keySize; bed.style.setProperty('--kh', settingsCache.keySize + 'px'); }
     if (['none', 'system', 'input', 'both'].includes(settingsCache.videoSound)) videoSound = settingsCache.videoSound;
     soundSel.value = videoSound;
+    if (BRIDGE && APPINFO) applySystemSound(APPINFO.systemSound !== false);
     if (typeof settingsCache.audioInput === 'string') audioInput = settingsCache.audioInput;
     if (typeof settingsCache.vocalInput === 'string') vocalInput = settingsCache.vocalInput;
     refreshInputs();

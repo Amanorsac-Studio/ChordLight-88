@@ -2,6 +2,56 @@
 
 Written for the person using the app, not for the commit log.
 
+## 2.0.4 — October 2026
+
+- **Mac: pressing Video no longer blanks the window.** To record "System —
+  what is playing", the Mac build used to ask macOS to record the screen just
+  for its sound. That needs a permission the app never asked for, gave back
+  no sound anyway, and could take the window down. The Mac build now never
+  asks for the display at all. System sound is greyed out on the Mac in this
+  version with a note (Apple needs macOS 14.2 or later and a newer runtime —
+  it returns in 2.1); a saved System setting falls back to Inputs with a
+  message. Windows is unchanged.
+- **If the window ever dies, it comes back.** Should the recorder or the
+  encoder fail, the window reloads itself with a message instead of staying
+  blank, and a small log is written — About › Logs opens the folder — so
+  you can send it in.
+- About shows whether system sound is available on this machine.
+
+## 2.0.3 — October 2026
+
+- **Chordlight 88 Free Trial.** A separate download, installed beside the full
+  version: every feature for 7 days from the first time it opens, recordings
+  up to 1 minute, and "Free Trial" on the title bar, in About and in a small
+  mark on every recorded clip. A badge counts the days down. After 7 days it
+  locks and shows where to get the full version — settings and recordings
+  stay where they are, and the full version picks them up.
+- Chord names: in a sharp key (or C), Auto spelling now names the ♭2, ♭3, ♭6
+  and ♭7 as flats — the tritone sub in C reads D♭9, not C♯9. G7♯9♭13, G7♭9♭13
+  and G7alt are recognised.
+
+## 2.0.2 — October 2026
+
+- **Fast playing while recording a video no longer makes the keys drop out.**
+  Before, every note you played repainted the whole window and the video
+  frame was drawn on the same thread, so a dense passage queued the notes
+  up behind the drawing and the lights fell behind your hands. Now:
+  - the video frame is drawn on its own thread and handed to the recorder at
+    a steady 30 or 60 frames a second, whatever the window is doing;
+  - the window repaints at most once per display frame, only the keys that
+    changed are touched, and chord names are remembered once worked out.
+  Measured with fast eight-note chords under the pedal while recording, a
+  note now reaches the screen in about 3 ms (it was about 30, and up to
+  140); the window no longer freezes at all with the Preview open.
+- The clip looks exactly as before — frame for frame, pixel for pixel.
+- Recording keeps full speed when another app covers Chordlight, and the
+  computer is kept from napping the app while a video records.
+- The WAV is packed on the audio thread where the system allows it, so a
+  busy window can never cost the file a block.
+- The Preview header says "own thread" when the clip is drawn on its own
+  thread. If a machine cannot start that thread, the window draws the clip
+  as before and the header just says the size.
+
 ## 2.0.1 — October 2026
 
 - Fix: choosing a new backdrop video left the old one playing (same file

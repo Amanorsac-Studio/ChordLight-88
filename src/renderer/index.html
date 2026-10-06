@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src blob: file:;">
+      content="default-src 'none'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src blob: file:;">
 <title>Chordlight 88</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
@@ -18,7 +18,7 @@
       <div class="bars" aria-hidden="true">
         <i style="height:7px"></i><i style="height:13px"></i><i style="height:19px"></i><i style="height:11px"></i><i style="height:16px"></i><i style="height:6px"></i>
       </div>
-      <div class="wordmark"><b>Chordlight 88</b><span>Amanorsac Studio</span></div>
+      <div class="wordmark"><b>Chordlight 88<em class="trialtag" id="trialtag" hidden> Free Trial</em></b><span>Amanorsac Studio</span></div>
     </div>
     <div class="seg" id="labelseg" role="group" aria-label="Note labels">
       <button type="button" data-mode="notes" aria-pressed="true">Notes</button>
@@ -26,6 +26,7 @@
       <button type="button" data-mode="off" aria-pressed="false">Off</button>
     </div>
     <div class="tbstat"><span class="led"></span><span id="tbport">Scanning…</span></div>
+    <button class="badge trialbadge" id="trialbadge" type="button" hidden>Free Trial</button>
     <span class="badge warn" id="licbadge" hidden title="The licence has not been refreshed for two days — connect to the internet soon">Connect soon</span>
     <div class="recgroup push" role="group" aria-label="Recording">
       <button class="btn" id="recbtn" type="button" aria-pressed="false" title="Record the MIDI you play to a .mid file">● Rec</button>
@@ -371,6 +372,8 @@
         <dt>Licence</dt><dd id="aboutlicence">—</dd>
         <dt>Runtime</dt><dd id="aboutruntime">—</dd>
         <dt>Preferences</dt><dd id="aboutprefs">—</dd>
+        <dt>System sound</dt><dd id="aboutsys">—</dd>
+        <dt>Logs</dt><dd><button class="btn" type="button" id="openlogs">Open the Logs folder</button></dd>
       </dl>
 
       <p class="aboutnote" id="privacynote">
@@ -386,6 +389,7 @@
         <span class="aboutmsg" id="aboutlicmsg"></span>
       </div>
       <div class="aboutlinks">
+        <button class="btn on" type="button" id="buyfull" data-link="https://amanorsac.studio" hidden>Get the full version</button>
         <button class="btn" type="button" data-link="https://amanorsac.studio/legal">Terms &amp; EULA</button>
         <button class="btn" type="button" data-link="https://amanorsac.studio/privacy">Privacy</button>
         <button class="btn" type="button" data-link="mailto:hello@amanorsac.studio">hello@amanorsac.studio</button>
@@ -408,6 +412,7 @@
     </section>
   </div>
 
+<script src="clip-draw.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

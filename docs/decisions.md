@@ -34,6 +34,35 @@ v1.0 applies in full — activation, the signed proof verified against the studi
 key, the 30-day offline grace and Deactivate this device — and this decision is
 reverted deliberately, not by accident.
 
+## The Free Trial is a separate, sealed build — not a mode
+
+**Chosen because** a trial that is the full app plus a flag can be switched off by
+changing the flag. The trial is built from the same source with
+`electron-builder.trial.cjs`: its own name and app id (it installs beside the full
+version), `package.json` stamped `"chordlightEdition": "trial"`, and the app sealed —
+Electron fuses burned (no run-as-Node, no `NODE_OPTIONS`, no `--inspect`, code only
+from `app.asar`) and ASAR integrity embedded, so an edited `trial.js` or `app.js`
+refuses to launch. CI proves both halves on every trial build: the sealed app starts,
+and the same app with one line of `trial.js` changed does not.
+
+**The rules** (src/main/trial.js): 7 days from the first launch, then the main process
+opens only the trial-ended screen — the app window is never created, so there is no
+page to unhide. Recordings stop at one minute in the window, and the main process
+refuses to write anything longer (it reads the length of a .mid or .wav, and holds a
+video or .chordlight to the time its take began). Every frame of a trial clip carries
+"Chordlight 88 · Free Trial". A trial build stops working 180 days after it was built.
+
+**Offline, no account.** The start date is sealed (AES-256-GCM under a key from this
+computer's identity) into four places — two app-data folders, a third folder, and the
+registry on Windows — and the earliest start wins. A clock earlier than the last time
+the app ran locks it until the date is right; the time is checked against
+amanorsac.studio when online. **The limit**: someone who finds and deletes all four
+places gets a new trial. Closing that needs the server: a `/trials/start` call that
+records the device and returns a signed start date, verified like a licence proof.
+
+**Over** a trial mode inside the full build (one flag from unlocked), and over an
+online-only trial (no internet, no trial — wrong for players at church on a laptop).
+
 ## One renderer file, four views
 
 `index.html` serves the main window and all three pop-outs, switched by a `view`
@@ -204,3 +233,40 @@ app.asar for the text form of those bytes, since the source ships as text.
 
 LICENSED_PRODUCT in main.js is the one switch: false gives the free build
 back, with no licence code reachable and no network requests at all.
+
+## The clip on its own thread, from 2.0.2
+
+Reported: recording a video while playing fast, dense chords, the keys stop
+following. Measured on the bench (16ths of eight-note chords with the pedal,
+about 130 MIDI messages a second): with a recording running, a note waited
+28–31 ms on median and up to 140 ms to be handled, against 4 ms without;
+with the Preview open the window spent 5 s of every 15 frozen. Every note
+arrived — none were lost — they queued behind the work.
+
+Two costs shared the one thread that also reads the MIDI. Per note: a full
+repaint (all 88 keys restyled, the readouts' HTML rebuilt, chord naming that
+re-parsed every template). Per frame: rasterising the clip's glows and
+gradients when the recorder took its copy.
+
+So: the window repaints at most every 12 ms (the first note after a pause at
+once), touches only keys whose look changed, writes text only when it
+changed, and remembers chord names by shape. The clip is drawn by
+clip-draw.js, one implementation fed a plain-data snapshot, hosted by
+clip-worker.js on its own thread with an OffscreenCanvas, feeding the
+recorder through a MediaStreamTrackGenerator at a fixed rate (a frame is
+skipped, never queued, if the encoder falls behind). The window's old loop
+remains as the fallback host, using the same drawing code.
+
+Starting the thread: the worker file beside the page, else the same file read
+by the preload (a whitelist of the app's own renderer files) and run from a
+blob URL — hence worker-src 'self' blob: in the CSP. Fonts reach the worker
+as bytes from the preload, so no file:// fetch is involved. If neither way
+starts or its fonts fail, the window draws. Verified: frames from the worker,
+the fallback and 2.0.1 are pixel-identical across four looks; the window's
+DOM and the keys pop-out match 2.0.1 exactly through 600 random events.
+
+After: 2.8 ms median, 12 ms p95, no long tasks, Preview or not. The WAV tap
+moved to an AudioWorklet (wav-tap.js; ScriptProcessor kept as the fallback).
+The main window runs with backgroundThrottling off, and a power-save blocker
+holds while a video records.
+

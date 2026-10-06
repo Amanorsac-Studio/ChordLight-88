@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self';">
+<title>Chordlight 88 Free Trial</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+  :root { --void:#070D1B; --bg:#0E1730; --line:#24345A; --text:#EAF5FF; --dim:#9FB0CF; --acc:#4ECDE6; --gold:#FFB53D; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: radial-gradient(120% 90% at 50% -10%, #1A2B55 0%, var(--bg) 45%, var(--void) 100%); color: var(--text);
+    font: 15px/1.5 Inter, "Segoe UI", system-ui, sans-serif; user-select: none; }
+  main { height: 100%; display: flex; flex-direction: column; justify-content: center; padding: 34px 40px; gap: 14px; }
+  .lockup { display: flex; align-items: center; gap: 14px; }
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 26px; }
+  .bars i { width: 5px; border-radius: 2px; background: linear-gradient(var(--acc), #2A7FD4); }
+  .name { font: 700 22px/1.1 "Barlow Condensed", Inter, sans-serif; letter-spacing: .3px; }
+  .name em { font-style: normal; color: var(--gold); }
+  .studio { font: 500 11px/1.2 "JetBrains Mono", monospace; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); }
+  h1 { font: 700 34px/1.1 "Barlow Condensed", Inter, sans-serif; margin: 14px 0 0; }
+  p { margin: 0; color: var(--dim); }
+  .when { font: 500 12px/1.4 "JetBrains Mono", monospace; color: var(--dim); border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+  .row { display: flex; gap: 10px; margin-top: 8px; }
+  button { font: 600 14px Inter, sans-serif; border-radius: 9px; padding: 11px 18px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--text); }
+  button.buy { background: linear-gradient(180deg, #5FD8EE, #2BA7C9); border-color: transparent; color: #04121D; }
+  button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="lockup">
+    <div class="bars" aria-hidden="true"><i style="height:9px"></i><i style="height:17px"></i><i style="height:25px"></i><i style="height:14px"></i><i style="height:21px"></i><i style="height:8px"></i></div>
+    <div><div class="name">Chordlight 88 <em>Free Trial</em></div><div class="studio">Amanorsac Studio</div></div>
+  </div>
+  <h1 id="head">Your free trial has ended</h1>
+  <p id="body">Thank you for trying Chordlight 88. Get the full version to keep playing — your settings and recordings are kept, and the full version records without a time limit.</p>
+  <p class="when" id="when"></p>
+  <div class="row">
+    <button class="buy" id="buy" type="button">Get Chordlight 88</button>
+    <button id="quit" type="button">Quit</button>
+  </div>
+</main>
+<script src="locked.js"></script>
+</body>
+</html>

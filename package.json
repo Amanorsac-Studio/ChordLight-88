@@ -1,7 +1,7 @@
 {
   "name": "chordlight-88",
   "productName": "Chordlight 88",
-  "version": "2.0.1",
+  "version": "2.0.4",
   "description": "88-key MIDI note and chord display with a live Nashville number readout. Amanorsac Studio.",
   "author": {
     "name": "Amanorsac Studio",
@@ -18,7 +18,10 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win --x64",
     "dist:mac": "electron-builder --mac --universal",
-    "dist:dir": "electron-builder --dir"
+    "dist:dir": "electron-builder --dir",
+    "dist:trial:win": "electron-builder --win --x64 --config electron-builder.trial.cjs",
+    "dist:trial:mac": "electron-builder --mac --universal --config electron-builder.trial.cjs",
+    "start:trial": "node -e \"process.env.CHORDLIGHT_EDITION='trial';require('child_process').spawn(require('electron'),['.'],{stdio:'inherit',env:process.env})\""
   },
   "devDependencies": {
     "@fontsource/barlow-condensed": "5.3.0",
