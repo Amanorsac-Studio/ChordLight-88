@@ -1,7 +1,7 @@
 /* Chordlight 88 Free Trial — the build of the trial edition.
  *
- *   npm run dist:trial:win     Chordlight88-FreeTrial-<version>-Windows.exe
- *   npm run dist:trial:mac     Chordlight88-FreeTrial-<version>-macOS.dmg
+ *   npm run dist:trial:win     Chordlight88FreeTrial-<version>-Windows.exe
+ *   npm run dist:trial:mac     Chordlight88FreeTrial-<version>-macOS.dmg
  *
  * Everything not set here comes from electron-builder.yml, so the trial is
  * the same app, signed and notarised the same way. What differs:
@@ -40,19 +40,20 @@ module.exports = {
   },
   /* .chordlight files open in the full version, not the trial */
   fileAssociations: [],
+  /* Packaging Standard P28: <Product>-<version>-<platform>, spaces removed */
   win: {
-    artifactName: 'Chordlight88-FreeTrial-${version}-Windows.${ext}'
+    artifactName: 'Chordlight88FreeTrial-${version}-Windows.${ext}'
   },
   nsis: {
     shortcutName: 'Chordlight 88 Free Trial',
-    artifactName: 'Chordlight88-FreeTrial-${version}-Windows.${ext}',
+    artifactName: 'Chordlight88FreeTrial-${version}-Windows.${ext}',
     include: 'build/installer-trial.nsh'
   },
   mac: {
-    artifactName: 'Chordlight88-FreeTrial-${version}-macOS.${ext}'
+    artifactName: 'Chordlight88FreeTrial-${version}-macOS.${ext}'
   },
   dmg: {
     title: 'Chordlight 88 Free Trial ${version}',
-    artifactName: 'Chordlight88-FreeTrial-${version}-macOS.${ext}'
+    artifactName: 'Chordlight88FreeTrial-${version}-macOS.${ext}'
   }
 };

@@ -14,32 +14,33 @@
  *     installer cannot be kept around for ever on a computer with a frozen
  *     clock.
  *
- * How it is kept honest — offline, with no account:
- *   - The start date is written to four places at once: two app-data
- *     folders, a third folder outside them, and (Windows) the registry.
- *     Each launch reads all four, keeps the EARLIEST start, and rewrites the
- *     lot — deleting one, two or three of them changes nothing. Uninstalling
- *     leaves them in place.
- *   - Each record is sealed with AES-256-GCM under a key derived from this
- *     computer's identity (Windows MachineGuid / macOS IOPlatformUUID): an
- *     edited record does not open, and a record copied from another
- *     computer does not open either.
+ * How it is kept honest — offline, no account, no network at all (Master
+ * Standard: a product with no licensing makes no network request):
+ *   - The start date is written to three places at once, all inside the
+ *     folders the File & Data Conventions allow this product: the trial's
+ *     own machine-state folder, the product's machine-state folder, and the
+ *     product's Documents folder. Each launch reads all three, keeps the
+ *     EARLIEST start, and rewrites the lot — deleting one or two changes
+ *     nothing. Uninstalling leaves them in place. Nothing in the registry.
+ *   - Each record is sealed with AES-256-GCM under a key derived from the
+ *     product's random device id (device.id, made on first run — B47; never
+ *     a hardware serial): an edited record does not open, and a record
+ *     copied from another computer does not open either.
  *   - Winding the clock back is caught: the record carries the latest time
  *     the app has seen, and a clock earlier than that locks the app until the
- *     date is right again. The time is also checked against the studio
- *     server's clock when the computer is online (a HEAD request; nothing
- *     about you or this computer is sent).
+ *     date is right again.
  *   - Once expired, the records say so: setting the clock back later does
  *     not reopen the trial.
  *   - The packaged app is sealed (Electron fuses + ASAR integrity, set in
  *     electron-builder.trial.cjs), so this file cannot be edited out.
+ *   The limit, stated plainly: someone who finds and deletes all three
+ *   records (and the device id) gets a new 7 days. Closing that needs the
+ *   licence server, which this edition deliberately never contacts.
  */
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
-const { app, net } = require('electron');
+const { app } = require('electron');
 
 const PKG = require('../../package.json');
 const DAY = 24 * 3600 * 1000;
@@ -47,39 +48,32 @@ const TRIAL_DAYS = 7;
 const BUILD_LIFETIME_DAYS = 180;
 const MAX_REC_SECONDS = 60;
 const SKEW = 2 * 3600 * 1000;           // clocks wobble (time sync, DST): two hours of grace
-const TIME_URL = 'https://amanorsac.studio';
+const PRODUCT = 'Chordlight 88';
 
 const isTrial = PKG.chordlightEdition === 'trial' || (!app.isPackaged && process.env.CHORDLIGHT_EDITION === 'trial');
 const builtAt = Date.parse(PKG.trialBuilt || '') || 0;
 
 /* ------------------------------------------------------------------ *
- * This computer
+ * The key: the product's own random device id (B47), made on first run
  * ------------------------------------------------------------------ */
-function machineId() {
-  try {
-    if (process.platform === 'win32') {
-      const out = execFileSync('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'],
-        { encoding: 'utf8', windowsHide: true, timeout: 4000 });
-      const m = out.match(/MachineGuid\s+REG_SZ\s+([0-9a-fA-F-]{36})/);
-      if (m) return 'win:' + m[1].toLowerCase();
-    } else if (process.platform === 'darwin') {
-      const out = execFileSync('ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice'], { encoding: 'utf8', timeout: 4000 });
-      const m = out.match(/"IOPlatformUUID"\s*=\s*"([0-9A-Fa-f-]+)"/);
-      if (m) return 'mac:' + m[1].toUpperCase();
-    } else {
-      for (const f of ['/etc/machine-id', '/var/lib/dbus/machine-id']) {
-        try { const id = fs.readFileSync(f, 'utf8').trim(); if (id) return 'lin:' + id; } catch { /* next */ }
-      }
-    }
-  } catch { /* fall through */ }
-  const cpu = (os.cpus()[0] || {}).model || '';
-  return 'host:' + [os.hostname(), cpu, os.totalmem(), os.platform(), os.arch()].join('|');
+function localBase() {
+  return process.platform === 'win32' ? (process.env.LOCALAPPDATA || app.getPath('appData')) : app.getPath('appData');
+}
+const productState = () => path.join(localBase(), 'Amanorsac Studio', PRODUCT);
+const trialState = () => path.join(localBase(), 'Amanorsac Studio', PRODUCT + ' Free Trial');
+const productDocs = () => path.join(app.getPath('documents'), 'Amanorsac Studio', PRODUCT);
+function deviceId() {
+  const file = path.join(productState(), 'device.id');       // shared with the full product
+  try { const id = fs.readFileSync(file, 'utf8').trim(); if (id.length >= 16 && id.length <= 128) return id; } catch { /* first run */ }
+  const id = crypto.randomUUID();
+  try { fs.mkdirSync(productState(), { recursive: true }); fs.writeFileSync(file, id, 'utf8'); } catch { /* read-only: the key still works for this run */ }
+  return id;
 }
 
 const PEPPER = Buffer.from('7c1e9a44d2b05f83e61a0c9f3b7d2e584a19c06fd3e8b2715f0a6c94e2d1b387', 'hex');
 let KEY = null;
 function key() {
-  if (!KEY) KEY = Buffer.from(crypto.hkdfSync('sha256', Buffer.from(machineId()), PEPPER, Buffer.from('chordlight88-trial-v1'), 32));
+  if (!KEY) KEY = Buffer.from(crypto.hkdfSync('sha256', Buffer.from(deviceId()), PEPPER, Buffer.from('chordlight88-trial-v2'), 32));
   return KEY;
 }
 function seal(rec) {
@@ -99,11 +93,8 @@ function open(text) {
 }
 
 /* ------------------------------------------------------------------ *
- * The four places
+ * The three places — all inside the folders this product may write
  * ------------------------------------------------------------------ */
-function localBase() {
-  return process.platform === 'win32' ? (process.env.LOCALAPPDATA || app.getPath('appData')) : app.getPath('appData');
-}
 function fileStore(file) {
   return {
     where: file,
@@ -117,56 +108,15 @@ function fileStore(file) {
     }
   };
 }
-const REG_KEY = 'HKCU\\Software\\Amanorsac Studio\\Shared';
-const REG_VALUE = 'cl88t';
-const regStore = {
-  where: REG_KEY,
-  read() {
-    try {
-      const out = execFileSync('reg', ['query', REG_KEY, '/v', REG_VALUE], { encoding: 'utf8', windowsHide: true, timeout: 4000 });
-      const m = out.match(new RegExp(REG_VALUE + '\\s+REG_SZ\\s+(\\S+)'));
-      if (!m) return null;
-      try { return { rec: open(m[1]) }; } catch { return { bad: true, birth: 0 }; }
-    } catch { return null; }
-  },
-  write(text) {
-    try { execFileSync('reg', ['add', REG_KEY, '/v', REG_VALUE, '/t', 'REG_SZ', '/d', text, '/f'], { windowsHide: true, timeout: 4000 }); } catch { /* the others hold it */ }
-  }
-};
 function stores() {
-  const list = [
-    fileStore(path.join(localBase(), 'Amanorsac Studio', 'Chordlight 88 Free Trial', 'trial.dat')),
-    fileStore(path.join(app.getPath('userData'), 'Session Cache', 'state.bin')),
-    process.platform === 'win32'
-      ? fileStore(path.join(os.homedir(), 'AppData', 'LocalLow', 'Amanorsac Studio', 'shared.bin'))
-      : fileStore(path.join(os.homedir(), 'Library', 'Preferences', 'studio.amanorsac.shared.bin'))
+  return [
+    fileStore(path.join(trialState(), 'trial.dat')),
+    fileStore(path.join(productState(), 'trial.dat')),
+    fileStore(path.join(productDocs(), '.trial.dat'))
   ];
-  if (process.platform === 'win32') list.push(regStore);
-  return list;
 }
 
-/* ------------------------------------------------------------------ *
- * Time — the computer's, corrected by the server's when we can reach it
- * ------------------------------------------------------------------ */
-let offset = 0;                 // server time minus local time, when known
-let netChecked = false;
-const now = () => Date.now() + offset;
-async function checkNetworkTime() {
-  try {
-    const t0 = Date.now();
-    const res = await Promise.race([
-      net.fetch(TIME_URL, { method: 'HEAD', cache: 'no-store' }),
-      new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 6000))
-    ]);
-    const server = Date.parse(res.headers.get('date') || '');
-    if (!Number.isFinite(server)) return false;
-    const local = (t0 + Date.now()) / 2;
-    const diff = server - local;
-    offset = Math.abs(diff) > 10 * 60 * 1000 ? diff : 0;   // ignore small drift
-    netChecked = true;
-    return true;
-  } catch { return false; }
-}
+const now = () => Date.now();
 
 /* ------------------------------------------------------------------ *
  * The verdict
@@ -185,12 +135,13 @@ function evaluate() {
     last = Math.max(...good.map((r) => r.l));
     expired = good.some((r) => r.x);
   } else if (bad.length) {
-    /* records that will not open — edited, or brought from another computer.
-       They still prove a trial started here: count from the oldest file. */
+    /* every record refuses to open — edited, brought from another computer,
+       or the device id was removed. A trial was started here and its record
+       was interfered with: it is over. */
     const births = bad.map((f) => f.r.birth).filter((b) => b > 0);
     start = births.length ? Math.min(...births) : t - TRIAL_DAYS * DAY;
     last = start;
-    expired = !births.length;
+    expired = true;
   } else {
     start = t; last = t; expired = false;            // first launch
   }
@@ -216,8 +167,7 @@ function evaluate() {
     endsAt,
     msLeft,
     daysLeft: reason ? 0 : Math.max(1, Math.ceil(msLeft / DAY)),
-    maxRecSeconds: MAX_REC_SECONDS,
-    netChecked
+    maxRecSeconds: MAX_REC_SECONDS
   };
   return state;
 }
@@ -299,7 +249,6 @@ module.exports = {
   MAX_REC_SECONDS,
   evaluate,
   status: () => state || evaluate(),
-  checkNetworkTime,
   takeStarted,
   checkSave,
   _test: { seal, open, smfSeconds, wavSeconds, stores }

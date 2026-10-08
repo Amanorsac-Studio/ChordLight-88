@@ -594,9 +594,8 @@ if (!app.requestSingleInstanceLock()) {
         app.on('activate', () => createLockWindow());
         return;
       }
-      trial.checkNetworkTime().then((ok) => { if (ok) recheckTrial(); });
       setInterval(recheckTrial, 10 * 60 * 1000);
-      powerMonitor.on('resume', () => { trial.checkNetworkTime().finally(recheckTrial); });
+      powerMonitor.on('resume', recheckTrial);
     }
     allowSelfCapture();
     if (LICENSED_PRODUCT) license.start();

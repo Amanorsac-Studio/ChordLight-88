@@ -34,6 +34,33 @@ v1.0 applies in full — activation, the signed proof verified against the studi
 key, the 30-day offline grace and Deactivate this device — and this decision is
 reverted deliberately, not by accident.
 
+## A piano built in, not captured
+
+**Chosen because** the one sound every player can be guaranteed is one the app makes
+itself. The studio's own sampled instruments (`.jmi` bundles from Sanctuary: Grand 1,
+SP Natural, Soft EP 1 — 30 roots every 3 semitones, 4–8 anchored velocity layers,
+FLAC) run in an AudioWorklet (`piano-engine.js`) that follows the bundle guide: the
+nearest anchor carries the timbre, the level follows one curve through the anchors'
+measured loudness with no velocity curve on top, a one-pole low-pass darkens notes
+below their anchor, 4-point interpolation, a 2 ms-lookahead limiter on the output.
+Samples are decoded once, held as 16-bit (the sources are 16-bit) and capped at 8 s
+with a fade, so a 240-zone instrument sits near 250 MB rather than 500. Loading is
+progressive — middle keys first — so the instrument is playable in about a second.
+Note-off follows the companion "NOTE-OFF AND KEY-OFF.md": every sample is a full-length
+note, so the chop is the engine's — a fade to -60 dB over the zone's releaseMs (by
+register when the zone has none: 320 ms below C3, 230 ms to B4, 150 ms above), killed
+at -80 dB; the pedal defers note-offs; key-off samples (`releaseZones`) play once per
+note, attenuated 3 dB per second held, when a bundle ships them.
+It runs on its own always-on context for ~10 ms monitoring,
+and enters the clip's mix as a stream — the same door a system-sound capture uses —
+so clips, WAVs and .chordlight files carry it with no OS permission on any platform.
+Macs below 14.2, which cannot capture system sound at all, get music in their clips
+this way. Default on for Mac, off for Windows (a DAW is usually the sound there).
+
+**Over** shipping nothing (a silent clip on most Macs), over a synthesised piano
+(small, but sounds like a toy), and over the public-domain Upright Piano KW tried first
+(it did not sound good enough to carry the product).
+
 ## The Free Trial is a separate, sealed build — not a mode
 
 **Chosen because** a trial that is the full app plus a flag can be switched off by
@@ -52,13 +79,16 @@ refuses to write anything longer (it reads the length of a .mid or .wav, and hol
 video or .chordlight to the time its take began). Every frame of a trial clip carries
 "Chordlight 88 · Free Trial". A trial build stops working 180 days after it was built.
 
-**Offline, no account.** The start date is sealed (AES-256-GCM under a key from this
-computer's identity) into four places — two app-data folders, a third folder, and the
-registry on Windows — and the earliest start wins. A clock earlier than the last time
-the app ran locks it until the date is right; the time is checked against
-amanorsac.studio when online. **The limit**: someone who finds and deletes all four
-places gets a new trial. Closing that needs the server: a `/trials/start` call that
-records the device and returns a signed start date, verified like a licence proof.
+**Offline, no account, no network.** The start date is sealed (AES-256-GCM under a key
+derived from the product's random `device.id`, per B47) into three places, all inside
+the folders the File & Data Conventions allow — the trial's machine-state folder, the
+product's machine-state folder, and the product's Documents folder — and the earliest
+start wins. Nothing in the registry; no request to any server (Master Standard: an
+unlicensed product makes none). A clock earlier than the last time the app ran locks it
+until the date is right. **The limit**: someone who finds and deletes all three records
+and the device id gets a new trial. Closing that needs the server — a `/trials/start`
+call returning a signed start date, verified like a licence proof — which would make the
+trial a licensed edition under the License Standard; a deliberate later step.
 
 **Over** a trial mode inside the full build (one flag from unlocked), and over an
 online-only trial (no internet, no trial — wrong for players at church on a laptop).

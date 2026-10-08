@@ -1,4 +1,4 @@
-CHORDLIGHT 88 2.0.2
+CHORDLIGHT 88 2.0.4
 Amanorsac Studio · amanorsac.studio
 
 
@@ -6,14 +6,17 @@ WHAT THIS IS
 
 An 88-key MIDI display that lights the notes you play, names the chord,
 and reads the Nashville number in your key — while your DAW keeps the
-same keyboard.
+same keyboard. Three sounds are built in, so every clip has music.
 
 
 INSTALLING
 
-Windows    Run Chordlight88-2.0.2-Windows.exe and follow the installer.
-macOS      Open Chordlight88-2.0.2-macOS.dmg and drag Chordlight 88 to
+Windows    Run Chordlight88-2.0.4-Windows.exe and follow the installer.
+macOS      Open Chordlight88-2.0.4-macOS.dmg and drag Chordlight 88 to
            Applications.
+
+Free trial  Chordlight88FreeTrial-2.0.4-Windows.exe / -macOS.dmg installs
+            beside the full version: 7 days, recordings up to 1 minute.
 
 
 WHAT GETS INSTALLED
@@ -29,15 +32,21 @@ YOUR SETTINGS AND RECORDINGS
 Windows    Documents\Amanorsac Studio\Chordlight 88\
 macOS      ~/Documents/Amanorsac Studio/Chordlight 88/
 
-Uninstalling does not delete these.
+Uninstalling does not delete these. The free trial uses the same folder,
+so the full version picks up your settings and recordings.
 
 
-ACTIVATION
+NO ACTIVATION
 
-Open Chordlight 88 and paste the licence key from your account at
-amanorsac.studio/my-apps. One key covers two computers, and you can move
-it yourself with Deactivate This Device, in About. Once activated it
-keeps working for 30 days without the internet.
+There is no key and no account. It never connects to the internet.
+
+
+SOUND
+
+Own · Grand · SP · EP on the title bar: your own instrument, or one of
+the built-in sounds — heard through the computer and recorded into every
+clip. System sound capture ("what is playing") is available on Windows;
+on a Mac use the built-in sounds or an audio input.
 
 
 IF IT DOES NOT SEE YOUR KEYBOARD
@@ -56,8 +65,7 @@ UNINSTALLING
 Windows    Settings > Apps > Chordlight 88 > Uninstall
 macOS      Drag /Applications/Chordlight 88.app to the Bin, then delete
            ~/Library/Application Support/Amanorsac Studio/Chordlight 88/
-           if you want the window positions and the licence gone too.
-           Deactivate this device first if you are moving to a new Mac.
+           if you want the window positions gone too.
 
 
 LICENCE AND PRIVACY

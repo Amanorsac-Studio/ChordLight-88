@@ -10,8 +10,10 @@ const ASSETS = new Set(['clip-draw.js', 'clip-worker.js', 'wav-tap.js',
   'fonts/inter-400.woff2', 'fonts/inter-500.woff2', 'fonts/inter-600.woff2', 'fonts/inter-700.woff2',
   'fonts/jetbrains-mono-400.woff2', 'fonts/jetbrains-mono-500.woff2', 'fonts/jetbrains-mono-600.woff2',
   'fonts/barlow-condensed-600.woff2', 'fonts/barlow-condensed-700.woff2']);
+/* the built-in instruments: each bundle's map and its samples, by bare name, nothing else */
+const SOUND = /^sounds\/(grand|spnatural|softep)\/(instrument\.json|samples\/[A-G]#?\d_v\d+_rr\d+\.(flac|wav))$/;
 function readAsset(name) {
-  if (!ASSETS.has(name)) return null;
+  if (!ASSETS.has(name) && !(typeof name === 'string' && SOUND.test(name))) return null;
   try { return new Uint8Array(fs.readFileSync(path.join(__dirname, '..', 'renderer', name))); } catch { return null; }
 }
 

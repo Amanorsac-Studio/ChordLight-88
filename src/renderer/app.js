@@ -953,7 +953,7 @@
         tTime = $('ttime'), tSpeed = $('tspeed'), tLoop = $('tloop'), dropHint = $('drophint');
 
   let outPort = null;
-  const send = (bytes) => { try { if (outPort) outPort.send(bytes); } catch { /* port went away */ } };
+  const send = (bytes) => { pianoMidi(bytes); try { if (outPort) outPort.send(bytes); } catch { /* port went away */ } };
 
   const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -1309,6 +1309,7 @@
   const recBtn = $('recbtn'), keepBtn = $('keepbtn');
 
   function capture(bytes) {
+    pianoMidi(bytes);
     if (!CAP) return;                        // before the recorder is set up
     const t = performance.now() / 1000;
     const b = Array.from(bytes);
@@ -1533,7 +1534,140 @@
   }
 
   const MIX = { ctx: null, keyGain: null, vocGain: null, bed: null, delay: null, dest: null,
-                keyAn: null, vocAn: null, streams: [], raf: 0, recording: false, ducked: false };
+                keyAn: null, vocAn: null, streams: [], raf: 0, recording: false, ducked: false, piano: false };
+
+  /* ================= the built-in piano =================
+     An upright piano that lives inside Chordlight (piano-engine.js, on the
+     audio thread). You hear it through the computer, and it goes into every
+     clip, WAV and Chordlight file through the mix — so a player with no
+     instrument sound, or a Mac that cannot capture one, still records music.
+     It runs on its own always-on context for low latency and hands the mix
+     a stream, the same way a system-sound capture does. */
+  const PIANO = { on: false, bank: 'off', ctx: null, node: null, gain: null, dest: null, ready: false, loading: null, level: 80, gen: 0 };
+  const soundSeg = $('soundseg'), soundVol = $('soundvol');
+  /* the instruments that ship — Amanorsac .jmi bundles under sounds/<id>/ */
+  const BANKS = {
+    grand:     { name: 'Grand 1',    dir: 'sounds/grand' },
+    spnatural: { name: 'SP Natural', dir: 'sounds/spnatural' },
+    softep:    { name: 'Soft EP 1',  dir: 'sounds/softep' }
+  };
+  async function readAssetBytes(name) {
+    if (BRIDGE && BRIDGE.asset) { const u8 = BRIDGE.asset(name); if (!u8) throw new Error('missing ' + name); return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength); }
+    const r = await fetch(name.split('/').map(encodeURIComponent).join('/')); if (!r.ok) throw new Error('missing ' + name); return r.arrayBuffer();
+  }
+  /* 16-bit copy of a decoded channel. A decaying sample is held to 8 s with
+     a fade at the end (the tails beyond are at -50 dB and below), which keeps
+     a 240-zone instrument near 250 MB in memory instead of 500. */
+  const MAX_SAMPLE_SEC = 8, FADE_SEC = 0.4;
+  const toI16 = (f32, sr, cap) => {
+    const n = cap ? Math.min(f32.length, Math.round(MAX_SAMPLE_SEC * sr)) : f32.length;
+    const fadeN = Math.min(n, Math.round(FADE_SEC * sr)), fadeFrom = n - fadeN;
+    const o = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+      let x = f32[i];
+      if (cap && n < f32.length && i >= fadeFrom) x *= (n - i) / fadeN;
+      o[i] = x >= 1 ? 32767 : x <= -1 ? -32768 : (x * 32767) | 0;
+    }
+    return o;
+  };
+  /* Loads a bundle: the map first (the engine knows every zone at once),
+     then the audio zone by zone, middle keys and middle velocities first,
+     so playing can start within a second while the rest streams in. */
+  async function loadBank(ctx, node, id, gen) {
+    const B = BANKS[id];
+    const inst = JSON.parse(new TextDecoder().decode(await readAssetBytes(B.dir + '/instrument.json')));
+    const zones = inst.zones.map((z, i) => ({
+      id: i, rootNote: z.rootNote, lo: z.keyRangeLo, hi: z.keyRangeHi,
+      anchor: z.anchorVelocity != null ? z.anchorVelocity : Math.round((z.velRangeLo + z.velRangeHi) / 2),
+      levelDb: z.levelDb != null ? z.levelDb : -20, releaseMs: z.releaseMs || 0,
+      files: z.roundRobins.map((r) => ({ file: r.file, loop: r.loop || null })), rr: []
+    }));
+    /* decodeAudioData resamples to the context's rate, so that is the rate the engine reads at */
+    /* key-off samples, when the bundle has them (NOTE-OFF AND KEY-OFF.md §3) */
+    const relZones = (inst.releaseZones || []).map((z, i) => ({
+      id: 100000 + i, rootNote: z.rootNote, lo: z.keyRangeLo, hi: z.keyRangeHi,
+      velLo: z.velRangeLo != null ? z.velRangeLo : 1, velHi: z.velRangeHi != null ? z.velRangeHi : 127,
+      rtDecayDb: z.rtDecayDb != null ? z.rtDecayDb : 3,
+      files: z.roundRobins.map((r) => ({ file: r.file, loop: null })), rr: []
+    }));
+    node.port.postMessage({
+      t: 'bank', sr: ctx.sampleRate, playback: inst.playback || {}, sustaining: inst.soundType === 'sustaining',
+      zones: zones.map((z) => ({ id: z.id, rootNote: z.rootNote, lo: z.lo, hi: z.hi, anchor: z.anchor, levelDb: z.levelDb, releaseMs: z.releaseMs, rr: [] })),
+      releaseZones: relZones.map((z) => ({ id: z.id, rootNote: z.rootNote, lo: z.lo, hi: z.hi, velLo: z.velLo, velHi: z.velHi, rtDecayDb: z.rtDecayDb, rr: [] }))
+    });
+    const order = zones.slice().sort((a, b) => (Math.abs(a.rootNote - 60) + Math.abs(a.anchor - 72) / 8) - (Math.abs(b.rootNote - 60) + Math.abs(b.anchor - 72) / 8)).concat(relZones);
+    let done = 0;
+    for (const z of order) {
+      if (PIANO.gen !== gen) return;                 // another bank was chosen meanwhile
+      const rr = [], transfer = [];
+      for (const f of z.files) {
+        const buf = await ctx.decodeAudioData(await readAssetBytes(B.dir + '/' + f.file));
+        const cap = !f.loop && (inst.soundType || 'decaying') === 'decaying' && z.id < 100000;   // key-off samples play to their end
+        const L = toI16(buf.getChannelData(0), buf.sampleRate, cap), R = buf.numberOfChannels > 1 ? toI16(buf.getChannelData(1), buf.sampleRate, cap) : L;
+        rr.push({ L, R, len: L.length, loop: f.loop }); transfer.push(L.buffer); if (R !== L) transfer.push(R.buffer);
+      }
+      if (PIANO.gen !== gen) return;
+      node.port.postMessage({ t: 'zone', id: z.id, rr }, transfer);
+      done++;
+      if (done === Math.min(24, zones.length)) toast(B.name + ' ready — loading the rest in the background');
+    }
+    toast(B.name + ' fully loaded');
+  }
+  async function startPiano(id) {
+    stopPiano();
+    const gen = ++PIANO.gen;
+    PIANO.loading = (async () => {
+      const ctx = new AudioContext({ latencyHint: 'interactive' });
+      const inline = window.CHORDLIGHT_INLINE && window.CHORDLIGHT_INLINE.piano;
+      await ctx.audioWorklet.addModule(inline ? URL.createObjectURL(new Blob([inline], { type: 'text/javascript' })) : 'piano-engine.js');
+      const node = new AudioWorkletNode(ctx, 'chordlight-piano', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      const gain = ctx.createGain(); gain.gain.value = PIANO.level / 100;
+      node.connect(gain);
+      gain.connect(ctx.destination);
+      const dest = ctx.createMediaStreamDestination();
+      gain.connect(dest);
+      if (PIANO.gen !== gen) { ctx.close(); return; }
+      Object.assign(PIANO, { ctx, node, gain, dest, ready: true });
+      toast('Loading ' + BANKS[id].name + '…');
+      await ctx.resume().catch(() => {});
+      await loadBank(ctx, node, id, gen);
+    })().catch((err) => { if (PIANO.gen === gen) toast(BANKS[id].name + ' could not load — ' + (err.message || err)); });
+    PIANO.loading.finally(() => { if (PIANO.gen === gen) PIANO.loading = null; });
+    return PIANO.loading;
+  }
+  function stopPiano() {
+    PIANO.gen++;
+    if (PIANO.node) PIANO.node.port.postMessage({ t: 'all' });
+    if (PIANO.ctx) { try { PIANO.ctx.close(); } catch { /* gone */ } }
+    Object.assign(PIANO, { ctx: null, node: null, gain: null, dest: null, ready: false, loading: null });
+  }
+  function setPiano(bank) {
+    if (!BANKS[bank]) bank = 'off';
+    PIANO.bank = bank; PIANO.on = bank !== 'off';
+    [...soundSeg.children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.bank === bank)));
+    if (PIANO.on) startPiano(bank); else stopPiano();
+  }
+  soundSeg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-bank]'); if (!b) return;
+    setPiano(b.dataset.bank); store({ sound: PIANO.bank });
+  });
+  soundVol.addEventListener('input', () => {
+    PIANO.level = +soundVol.value;
+    if (PIANO.gain) PIANO.gain.gain.setTargetAtTime(PIANO.level / 100, PIANO.ctx.currentTime, 0.02);
+    store({ soundLevel: PIANO.level });
+  });
+  /* every MIDI message the display sees — played live, or from the
+     transport — reaches the piano too */
+  if (!BRIDGE) window.__PIANO = PIANO;   // bench
+  if (!BRIDGE) window.__MIX = MIX;       // bench
+  function pianoMidi(b) {
+    if (!PIANO.ready || !PIANO.node) return;
+    const cmd = b[0] & 0xF0;
+    if (cmd === 0x90 && b[2] > 0) PIANO.node.port.postMessage({ t: 'on', n: b[1], v: b[2] });
+    else if (cmd === 0x80 || cmd === 0x90) PIANO.node.port.postMessage({ t: 'off', n: b[1] });
+    else if (cmd === 0xB0 && b[1] === 64) PIANO.node.port.postMessage({ t: 'pedal', down: b[2] >= 64 });
+    else if (cmd === 0xB0 && (b[1] === 120 || b[1] === 123)) PIANO.node.port.postMessage({ t: 'all' });
+  }
 
   /* ---------- WAV: the mix, uncompressed ----------
      24-bit, 48 kHz, stereo, tapped after the delay so it is exactly what the
@@ -1709,6 +1843,11 @@
     Object.assign(MIX, { ctx, dest, delay, bed, keyGain, vocGain, keyAn, vocAn, streams: [] });
 
     if (sysTrack) ctx.createMediaStreamSource(new MediaStream([sysTrack])).connect(bed);
+    MIX.piano = false;
+    if (PIANO.on && PIANO.dest && videoSound !== 'none') {
+      ctx.createMediaStreamSource(PIANO.dest.stream).connect(bed);
+      MIX.piano = true;
+    }
     let hasVocal = false;
     if (wantInput || !MIX.recording) {
       const keyStream = await openInput(audioInput, 'keyboard input');
@@ -1744,7 +1883,7 @@
     cancelAnimationFrame(MIX.raf);
     MIX.streams.forEach((st) => st.getTracks().forEach((t) => t.stop()));
     if (MIX.ctx) { try { MIX.ctx.close(); } catch { /* already gone */ } }
-    Object.assign(MIX, { ctx: null, keyGain: null, vocGain: null, bed: null, delay: null, dest: null, keyAn: null, vocAn: null, streams: [], ducked: false });
+    Object.assign(MIX, { ctx: null, keyGain: null, vocGain: null, bed: null, delay: null, dest: null, keyAn: null, vocAn: null, streams: [], ducked: false, piano: false });
     keyMeter.style.width = '0%'; vocMeter.style.width = '0%';
     duckBadge.classList.remove('lit');
   }
@@ -2067,9 +2206,9 @@
     MIX.recording = true;
     await buildMix(sys ? sys.track : null);
     const audioTrack = MIX.dest.stream.getAudioTracks()[0];
-    const hasSound = !!sys || MIX.streams.length > 0;
+    const hasSound = !!sys || MIX.streams.length > 0 || MIX.piano;
     if (hasSound && audioTrack) tracks.push(audioTrack);
-    else if (videoSound !== 'none') toast('No sound source could be opened — picture only');
+    else if (videoSound !== 'none') toast('No sound source could be opened — picture only (turn on Sound › Upright piano for a built-in sound)');
     const stream = new MediaStream(tracks);
     const stopAll = () => {
       stopFrames();
@@ -2365,7 +2504,7 @@
     aboutLic.textContent = st.endsAt
       ? `Free trial · ${left} day${left === 1 ? '' : 's'} left · ends ${whenDate(st.endsAt)} · recordings up to 1 minute`
       : 'Free trial · 7 days · recordings up to 1 minute';
-    $('privacynote').textContent = 'The free trial checks the time with amanorsac.studio when you are online (one request that sends nothing about you or this computer), so the 7 days are counted fairly. It never reads your sessions or presets, never sends audio or MIDI anywhere, and contains no analytics or telemetry.';
+    $('privacynote').textContent = 'The free trial makes no network requests of any kind — the 7 days are counted on this computer. It never reads your sessions or presets, never sends audio or MIDI anywhere, and contains no analytics or telemetry. Updates are handled by Amanorsac Hub, not by this app.';
     licRow.hidden = true; actScrim.hidden = true; licBadge.hidden = true;
     $('buyfull').hidden = false;
   }
@@ -2482,6 +2621,12 @@
     if (['none', 'system', 'input', 'both'].includes(settingsCache.videoSound)) videoSound = settingsCache.videoSound;
     soundSel.value = videoSound;
     if (BRIDGE && APPINFO) applySystemSound(APPINFO.systemSound !== false);
+    if (Number.isFinite(+settingsCache.soundLevel)) PIANO.level = Math.max(0, Math.min(100, +settingsCache.soundLevel));
+    soundVol.value = PIANO.level;
+    /* the built-in piano is on from the first run on a Mac (no system sound
+       there yet) and off on Windows, where a DAW is usually making the sound */
+    const soundDefault = (APPINFO && APPINFO.systemSound === false) ? 'grand' : 'off';
+    setPiano(BANKS[settingsCache.sound] || settingsCache.sound === 'off' ? settingsCache.sound : soundDefault);
     if (typeof settingsCache.audioInput === 'string') audioInput = settingsCache.audioInput;
     if (typeof settingsCache.vocalInput === 'string') vocalInput = settingsCache.vocalInput;
     refreshInputs();

@@ -4,6 +4,17 @@ Written for the person using the app, not for the commit log.
 
 ## 2.0.4 — October 2026
 
+- **Three instruments, built in.** Setup › Sound: *Grand 1*, *SP Natural*
+  and *Soft EP 1* — Amanorsac Studio's own sampled instruments (30 notes
+  across the keyboard, 4–8 velocity layers each). They play from your
+  keyboard and go into every clip, WAV and Chordlight file through the mix,
+  with the pedal, 96 voices and a limiter so big chords never distort. You
+  hear them through the computer at about 10 ms; an instrument is playable
+  about a second after you choose it and finishes loading in the
+  background. On a Mac the Grand is on from the first run, so a clip always
+  has sound; on Windows the sound is off until you choose it, since a DAW
+  is usually making the sound there. *Sound level* sets how loud. Adds
+  about 110 MB.
 - **Mac: pressing Video no longer blanks the window.** To record "System —
   what is playing", the Mac build used to ask macOS to record the screen just
   for its sound. That needs a permission the app never asked for, gave back
@@ -25,7 +36,8 @@ Written for the person using the app, not for the commit log.
   up to 1 minute, and "Free Trial" on the title bar, in About and in a small
   mark on every recorded clip. A badge counts the days down. After 7 days it
   locks and shows where to get the full version — settings and recordings
-  stay where they are, and the full version picks them up.
+  stay where they are, and the full version picks them up. Like the full
+  version it makes no network requests at all.
 - Chord names: in a sharp key (or C), Auto spelling now names the ♭2, ♭3, ♭6
   and ♭7 as flats — the tritone sub in C reads D♭9, not C♯9. G7♯9♭13, G7♭9♭13
   and G7alt are recognised.

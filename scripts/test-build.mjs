@@ -11,8 +11,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const R = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'renderer');
-const [html, css, js, draw, worker, wav] = await Promise.all(
-  ['index.html', 'styles.css', 'app.js', 'clip-draw.js', 'clip-worker.js', 'wav-tap.js'].map((f) => readFile(join(R, f), 'utf8'))
+const [html, css, js, draw, worker, wav, piano] = await Promise.all(
+  ['index.html', 'styles.css', 'app.js', 'clip-draw.js', 'clip-worker.js', 'wav-tap.js', 'piano-engine.js'].map((f) => readFile(join(R, f), 'utf8'))
 );
 
 let fontFiles = [];
@@ -30,14 +30,14 @@ const fontLink = fontFiles.length ? `<style>${faceCss}</style>`
     'family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700' +
     '&family=JetBrains+Mono:wght@400;500;600&display=swap">';
 
-const inline = { worker: draw + '\n' + worker, wav, fonts: fontFiles.length ? fonts : null };
+const inline = { worker: draw + '\n' + worker, wav, piano, fonts: fontFiles.length ? fonts : null };
 const safe = (t) => t.replace(/<\/script/gi, '<\\/script');
 
 const out = html
   .replace(/<meta http-equiv="Content-Security-Policy"[\s\S]*?>/,
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; ' +
     'script-src \'unsafe-inline\' blob:; worker-src blob:; style-src \'unsafe-inline\' https://fonts.googleapis.com; ' +
-    'font-src data: https://fonts.gstatic.com; img-src \'self\' data: blob:; media-src blob: data: file:;">')
+    'font-src data: https://fonts.gstatic.com; img-src \'self\' data: blob:; media-src blob: data: file:; connect-src \'self\' http: https:;">')
   .replace('<link rel="stylesheet" href="fonts/fonts.css">', fontLink)
   .replace('<link rel="stylesheet" href="styles.css">',
     `<style>\n${css}\n/* browser test build: the window buttons belong to Electron */\n.wbtn{display:none}\n</style>`)

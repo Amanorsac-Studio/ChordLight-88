@@ -25,6 +25,12 @@
       <button type="button" data-mode="solfa" aria-pressed="false">Sol-fa</button>
       <button type="button" data-mode="off" aria-pressed="false">Off</button>
     </div>
+    <div class="seg" id="soundseg" role="group" aria-label="Sound" title="What you hear and what the clip records: your own instrument, or one built into Chordlight">
+      <button type="button" data-bank="off" aria-pressed="true" title="Your own instrument — Chordlight makes no sound">Own</button>
+      <button type="button" data-bank="grand" aria-pressed="false" title="Grand 1 — built in">Grand</button>
+      <button type="button" data-bank="spnatural" aria-pressed="false" title="SP Natural — built in">SP</button>
+      <button type="button" data-bank="softep" aria-pressed="false" title="Soft EP 1 — built in">EP</button>
+    </div>
     <div class="tbstat"><span class="led"></span><span id="tbport">Scanning…</span></div>
     <button class="badge trialbadge" id="trialbadge" type="button" hidden>Free Trial</button>
     <span class="badge warn" id="licbadge" hidden title="The licence has not been refreshed for two days — connect to the internet soon">Connect soon</span>
@@ -98,6 +104,10 @@
     <div class="grp">
       <label class="fld" for="out">MIDI output</label>
       <select id="out"><option>None</option></select>
+    </div>
+    <div class="grp">
+      <label class="fld" for="soundvol">Sound level</label>
+      <input type="range" id="soundvol" min="0" max="100" value="80" title="Built-in sound level">
     </div>
     <div class="grp">
       <label class="fld" for="keylight">Key light</label>
