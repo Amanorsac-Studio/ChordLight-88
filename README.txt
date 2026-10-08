@@ -1,4 +1,4 @@
-CHORDLIGHT 88 2.0.4
+CHORDLIGHT 88 2.0.5
 Amanorsac Studio · amanorsac.studio
 
 
@@ -11,11 +11,11 @@ same keyboard. Three sounds are built in, so every clip has music.
 
 INSTALLING
 
-Windows    Run Chordlight88-2.0.4-Windows.exe and follow the installer.
-macOS      Open Chordlight88-2.0.4-macOS.dmg and drag Chordlight 88 to
+Windows    Run Chordlight88-2.0.5-Windows.exe and follow the installer.
+macOS      Open Chordlight88-2.0.5-macOS.dmg and drag Chordlight 88 to
            Applications.
 
-Free trial  Chordlight88FreeTrial-2.0.4-Windows.exe / -macOS.dmg installs
+Free trial  Chordlight88FreeTrial-2.0.5-Windows.exe / -macOS.dmg installs
             beside the full version: 7 days, recordings up to 1 minute.
 
 

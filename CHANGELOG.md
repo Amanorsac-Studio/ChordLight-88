@@ -2,7 +2,7 @@
 
 Written for the person using the app, not for the commit log.
 
-## 2.0.4 — October 2026
+## 2.0.5 — October 2026
 
 - **Three instruments, built in.** Setup › Sound: *Grand 1*, *SP Natural*
   and *Soft EP 1* — Amanorsac Studio's own sampled instruments (30 notes
