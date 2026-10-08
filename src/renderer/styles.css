@@ -288,16 +288,17 @@ button.btn.on{
 .badge.quiet{color:var(--text-faint);border-color:var(--edge)}
 .badge.lit{color:#fff;background:var(--a2);border-color:var(--a2)}
 input[type=range]{width:112px;accent-color:var(--a2);background:transparent}
-/* Advanced — the drawer continued, in labelled rows. Same controls, same
-   style; only the row tag is new. */
-.status.advanced{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;padding:2px 14px}
-.status.advanced .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:9px 0}
-.status.advanced .row + .row{border-top:1px solid var(--edge)}
-.status.advanced .tag{
-  font-family:var(--font-m);font-size:9px;letter-spacing:.2em;text-transform:uppercase;
-  color:var(--acc-txt);width:52px;flex:none;padding-bottom:10px;
+/* Setup in tabs — the drawer stacks: one strip of tabs, then the panel for
+   the chosen one. The strip is the same segment control as the title bar's,
+   so it reads as part of the same family. */
+.status.setup{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;padding:10px 14px 12px}
+.status.setup .tabs{align-self:flex-start}
+.status.setup .tabs button{min-width:62px}
+.tabpanel{
+  display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;
+  padding:12px 0 0;margin-top:10px;border-top:1px solid var(--edge);
 }
-.status.advanced .tag .led{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--a3);box-shadow:0 0 9px var(--a3);margin-right:7px;vertical-align:1px}
+.tabpanel[hidden]{display:none}
 label.fld .rv{font-size:10px;letter-spacing:.02em;text-transform:none;color:var(--text-dim);margin-left:6px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 

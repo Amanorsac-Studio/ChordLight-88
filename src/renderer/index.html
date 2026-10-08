@@ -87,96 +87,81 @@
 
   </div>
 
-  <div class="status raised" id="setup" hidden>
-    <div class="grp">
-      <label class="fld" for="port">MIDI input</label>
-      <select id="port"><option>Scanning for inputs…</option></select>
+  <!-- Setup, in four tabs. One drawer, one row of controls at a time: the
+       flat list had grown to thirty-odd fields across a drawer and an
+       "Advanced" sub-drawer, which is a lot to read past to change the MIDI
+       port. The tabs are the same segment control as Notes/Sol-fa/Off on the
+       title bar, so there is nothing new to learn. Nothing was removed and
+       no id changed; only the order and the wrapper. -->
+  <div class="status raised setup" id="setup" hidden>
+    <div class="seg tabs" id="setuptabs" role="tablist" aria-label="Setup sections">
+      <button type="button" role="tab" data-tab="play" aria-pressed="true" aria-selected="true" aria-controls="tab-play" title="Your keyboard: which port, which channel, where the notes go">Play</button>
+      <button type="button" role="tab" data-tab="sound" aria-pressed="false" aria-selected="false" aria-controls="tab-sound" title="The built-in instruments, your inputs and the mix">Sound</button>
+      <button type="button" role="tab" data-tab="clip" aria-pressed="false" aria-selected="false" aria-controls="tab-clip" title="What a video or a take records, and what it says on it">Clip</button>
+      <button type="button" role="tab" data-tab="look" aria-pressed="false" aria-selected="false" aria-controls="tab-look" title="Colour, keys and the backdrop">Look</button>
     </div>
-    <div class="grp">
-      <label class="fld" for="ch">Channel</label>
-      <select id="ch">
-        <option>Omni</option><option>1</option><option>2</option><option>3</option><option>4</option>
-        <option>5</option><option>6</option><option>7</option><option>8</option>
-        <option>9</option><option>10</option><option>11</option><option>12</option>
-        <option>13</option><option>14</option><option>15</option><option>16</option>
-      </select>
-    </div>
-    <div class="grp">
-      <label class="fld" for="out">MIDI output</label>
-      <select id="out"><option>None</option></select>
-    </div>
-    <div class="grp">
-      <label class="fld" for="soundvol">Sound level</label>
-      <input type="range" id="soundvol" min="0" max="100" value="80" title="Built-in sound level">
-    </div>
-    <div class="grp">
-      <label class="fld" for="keylight">Key light</label>
-      <select id="keylight">
-        <option value="solid">Solid</option>
-        <option value="gradient">Gradient</option>
-      </select>
-    </div>
-    <div class="grp">
-      <label class="fld" for="videosound">Video sound</label>
-      <select id="videosound">
-        <option value="none">None</option>
-        <option value="system">System — what is playing</option>
-        <option value="input">Inputs</option>
-        <option value="both">System + inputs</option>
-      </select>
-    </div>
-    <div class="grp">
-      <label class="fld" for="audioin">Keyboard input</label>
-      <select id="audioin"><option value="">Default</option></select>
-    </div>
-    <div class="grp">
-      <label class="fld" for="backdrop">Backdrop</label>
-      <select id="backdrop">
-        <option value="theme">Theme</option>
-        <option value="picture">Your picture</option>
-        <option value="video">Your video</option>
-        <option value="green">Chroma green</option>
-        <option value="blue">Chroma blue</option>
-      </select>
-    </div>
-    <div class="grp">
-      <label class="fld" for="pedal">Pedal</label>
-      <select id="pedal">
-        <option value="chord">Current chord</option>
-        <option value="all">Everything sounding</option>
-        <option value="ignore">Ignore the pedal</option>
-      </select>
-    </div>
-    <div class="grp">
-      <label class="fld">Colour</label>
-      <div class="swatches" id="swatches" role="group" aria-label="Accent colour"></div>
-    </div>
-    <div class="grp">
-      <label class="fld" for="velmode">Velocity</label>
-      <select id="velmode">
-        <option value="on">Sensitive</option>
-        <option value="off">Fixed</option>
-      </select>
-    </div>
-    <div class="grp">
-      <label class="fld">Level</label>
-      <div class="vmeter"><i id="vbar"></i></div>
-    </div>
-    <div class="grp">
-      <label class="fld" for="ksize">Key size</label>
-      <input type="range" id="ksize" min="140" max="280" value="188">
-    </div>
-    <div class="spacer"></div>
-    <button class="btn" type="button" id="recfolder" hidden>Recordings folder</button>
-    <span class="badge" id="portbadge">Non-exclusive</span>
-    <span class="badge" id="sustbadge">Sustain off</span>
-    <button class="btn" type="button" id="advbtn" aria-expanded="false" aria-controls="advanced" title="Vocal input, ducking, video quality, your own backdrop picture">Advanced ▾</button>
-  </div>
 
-  <!-- Advanced: the same drawer, continued — nothing here is needed to play -->
-  <div class="status raised advanced" id="advanced" hidden>
-    <div class="row">
-      <div class="tag"><span class="led"></span>Video</div>
+    <!-- ---------------------------------------------------------- Play -->
+    <div class="tabpanel" id="tab-play" role="tabpanel" aria-labelledby="setuptabs">
+      <div class="grp">
+        <label class="fld" for="port">MIDI input</label>
+        <select id="port"><option>Scanning for inputs…</option></select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="ch">Channel</label>
+        <select id="ch">
+          <option>Omni</option><option>1</option><option>2</option><option>3</option><option>4</option>
+          <option>5</option><option>6</option><option>7</option><option>8</option>
+          <option>9</option><option>10</option><option>11</option><option>12</option>
+          <option>13</option><option>14</option><option>15</option><option>16</option>
+        </select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="out">MIDI output</label>
+        <select id="out"><option>None</option></select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="pedal">Pedal</label>
+        <select id="pedal">
+          <option value="chord">Current chord</option>
+          <option value="all">Everything sounding</option>
+          <option value="ignore">Ignore the pedal</option>
+        </select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="velmode">Velocity</label>
+        <select id="velmode">
+          <option value="on">Sensitive</option>
+          <option value="off">Fixed</option>
+        </select>
+      </div>
+      <div class="grp">
+        <label class="fld">Level</label>
+        <div class="vmeter"><i id="vbar"></i></div>
+      </div>
+      <div class="spacer"></div>
+      <span class="badge" id="portbadge">Non-exclusive</span>
+      <span class="badge" id="sustbadge">Sustain off</span>
+    </div>
+
+    <!-- --------------------------------------------------------- Sound -->
+    <div class="tabpanel" id="tab-sound" role="tabpanel" aria-labelledby="setuptabs" hidden>
+      <div class="grp">
+        <label class="fld" for="soundvol">Sound level</label>
+        <input type="range" id="soundvol" min="0" max="100" value="80" title="Built-in sound level">
+      </div>
+      <div class="grp">
+        <label class="fld" for="attack">Attack <span class="rv" id="attackv">Natural</span></label>
+        <input type="range" id="attack" min="0" max="400" step="5" value="0" title="Natural is the hammer as it was recorded. Above zero the note fades in, which is how you get a swell out of a piano.">
+      </div>
+      <div class="grp">
+        <label class="fld" for="release">Release <span class="rv" id="releasev">Instrument</span></label>
+        <input type="range" id="release" min="0" max="1500" step="10" value="0" title="How long a note takes to fall silent after you lift the key. Instrument leaves it to the sound itself — longer in the bass, shorter at the top.">
+      </div>
+      <div class="grp">
+        <label class="fld" for="audioin">Keyboard input</label>
+        <select id="audioin"><option value="">Default</option></select>
+      </div>
       <div class="grp">
         <label class="fld" for="vocalin">Vocal input</label>
         <select id="vocalin"><option value="">None</option></select>
@@ -188,6 +173,32 @@
       <div class="grp">
         <label class="fld" for="aoffset">Audio offset <span class="rv" id="aoffsetv">0 ms</span></label>
         <input type="range" id="aoffset" min="0" max="300" step="5" value="0" title="Delay the sound if it runs ahead of the picture">
+      </div>
+      <div class="grp strip">
+        <label class="fld" for="keygain">Keyboard <span class="rv" id="keygainv">0 dB</span></label>
+        <div class="vmeter wide"><i id="keymeter"></i></div>
+        <input type="range" id="keygain" min="-24" max="12" step="1" value="0" title="Keyboard input level in the clip">
+      </div>
+      <div class="grp strip">
+        <label class="fld" for="vocgain">Vocal <span class="rv" id="vocgainv">0 dB</span></label>
+        <div class="vmeter wide"><i id="vocmeter"></i></div>
+        <input type="range" id="vocgain" min="-24" max="12" step="1" value="0" title="Vocal input level in the clip">
+      </div>
+      <div class="spacer"></div>
+      <span class="badge quiet" id="duckbadge" title="Lights while the vocal input is pushing the keys down">Duck</span>
+      <span class="badge quiet" id="mixnote">Meters run while Sound is open</span>
+    </div>
+
+    <!-- ---------------------------------------------------------- Clip -->
+    <div class="tabpanel" id="tab-clip" role="tabpanel" aria-labelledby="setuptabs" hidden>
+      <div class="grp">
+        <label class="fld" for="videosound">Video sound</label>
+        <select id="videosound">
+          <option value="none">None</option>
+          <option value="system">System — what is playing</option>
+          <option value="input">Inputs</option>
+          <option value="both">System + inputs</option>
+        </select>
       </div>
       <div class="grp">
         <label class="fld" for="vquality">Quality</label>
@@ -242,10 +253,38 @@
           <button class="btn" type="button" id="alsopack" aria-pressed="false" title="With Video and with Rec, also save a .chordlight — the take, its sound and its look in one file anyone with Chordlight can open and play">+ .chordlight</button>
         </div>
       </div>
+      <div class="spacer"></div>
+      <button class="btn" type="button" id="recfolder" hidden>Recordings folder</button>
       <span class="badge quiet" id="fmtbadge">Format…</span>
     </div>
-    <div class="row">
-      <div class="tag"><span class="led"></span>Look</div>
+
+    <!-- ---------------------------------------------------------- Look -->
+    <div class="tabpanel" id="tab-look" role="tabpanel" aria-labelledby="setuptabs" hidden>
+      <div class="grp">
+        <label class="fld" for="keylight">Key light</label>
+        <select id="keylight">
+          <option value="solid">Solid</option>
+          <option value="gradient">Gradient</option>
+        </select>
+      </div>
+      <div class="grp">
+        <label class="fld" for="ksize">Key size</label>
+        <input type="range" id="ksize" min="140" max="280" value="188">
+      </div>
+      <div class="grp">
+        <label class="fld">Colour</label>
+        <div class="swatches" id="swatches" role="group" aria-label="Accent colour"></div>
+      </div>
+      <div class="grp">
+        <label class="fld" for="backdrop">Backdrop</label>
+        <select id="backdrop">
+          <option value="theme">Theme</option>
+          <option value="picture">Your picture</option>
+          <option value="video">Your video</option>
+          <option value="green">Chroma green</option>
+          <option value="blue">Chroma blue</option>
+        </select>
+      </div>
       <div class="grp">
         <label class="fld">Picture or video</label>
         <button class="btn" type="button" id="pickpic">Choose…</button>
@@ -271,22 +310,8 @@
         <label class="fld" for="platealpha">Plate strength <span class="rv" id="platealphav">55%</span></label>
         <input type="range" id="platealpha" min="20" max="100" step="5" value="55">
       </div>
+      <div class="spacer"></div>
       <span class="badge" id="picbadge" hidden>No picture yet</span>
-    </div>
-    <div class="row mix">
-      <div class="tag"><span class="led"></span>Mix</div>
-      <div class="grp strip">
-        <label class="fld" for="keygain">Keyboard <span class="rv" id="keygainv">0 dB</span></label>
-        <div class="vmeter wide"><i id="keymeter"></i></div>
-        <input type="range" id="keygain" min="-24" max="12" step="1" value="0" title="Keyboard input level in the clip">
-      </div>
-      <div class="grp strip">
-        <label class="fld" for="vocgain">Vocal <span class="rv" id="vocgainv">0 dB</span></label>
-        <div class="vmeter wide"><i id="vocmeter"></i></div>
-        <input type="range" id="vocgain" min="-24" max="12" step="1" value="0" title="Vocal input level in the clip">
-      </div>
-      <span class="badge quiet" id="duckbadge" title="Lights while the vocal input is pushing the keys down">Duck</span>
-      <span class="badge quiet" id="mixnote">Meters run while Advanced is open</span>
     </div>
   </div>
 

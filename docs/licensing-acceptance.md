@@ -17,8 +17,8 @@ RELEASE build and a real key from My Apps. Fill every line; send with the build
 | A8 | Fill both seats with two other device ids (curl, §9), then activate | "Both of this key's computers are in use (…)" | | |
 | A9 | About › Deactivate this device | Activation screen; key and proof files gone; device gone from My Apps | | |
 | A10 | Bundles only | n/a — single product | n/a | |
-| A11 | Release build contains the §5 key and no other | `cd a5 7d 1c c8 a6 e2 71` once in app.asar (text form, see docs/decisions.md) | | |
-| A12 | Release build's default URL | `amanorsac.studio`; no `127.0.0.1` or `localhost` in the licence path | | |
+| A11 | Release build contains the §5 key and no other | `cd a5 7d 1c c8 a6 e2 71` once in app.asar (text form, see docs/decisions.md) | Source pre-cleared: exactly one `PUBLIC_KEY` in `src/`, no second key anywhere. Confirm on the built asar. | Claude, 8 Oct 2026 |
+| A12 | Release build's default URL | `amanorsac.studio`; no `127.0.0.1` or `localhost` in the licence path | PASS — `BASE_URL` is `https://amanorsac.studio`; the `AMANORSAC_LICENSE_SERVER` override is gated on `!app.isPackaged`, so a packaged build ignores it; no `localhost` or `127.0.0.1` in `src/main/`. `license.js` is the only file that makes a request. | Claude, 8 Oct 2026 |
 
 Key tested against: `____-____-____-____`   Build: `Chordlight88-2.0.6-Windows.exe` / `-macOS.dmg`
 

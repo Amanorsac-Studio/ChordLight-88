@@ -23,6 +23,7 @@
  *          releaseZones:[{id, rootNote, lo, hi, velLo, velHi, rtDecayDb, rr:[]}]}
  *   zone  {id, rr:[{L,R,len,loop}]}      audio for a zone (or release zone) announced without it
  *   release {ms}                         a player's own release time; 0 = the bundle's
+ *   attack  {ms}                         a player's own attack; 0 = the natural strike
  *
  * Note-off ("NOTE-OFF AND KEY-OFF.md"): every sample is a full-length note,
  * so the chop is this engine's job. On note-off the voice fades to -60 dB
@@ -33,6 +34,9 @@
  */
 const MAX_VOICES = 96;
 const I16 = 1 / 32768;
+/* Always fade the head of a sample in over this many frames, so a voice
+   can never start on a step. ~1 ms at 48 kHz; inaudible on a hammer. */
+const MIN_ATTACK = 48;
 
 class Limiter {
   constructor(sr) {
@@ -72,7 +76,8 @@ class PianoEngine extends AudioWorkletProcessor {
     this.voices = [];
     this.relZones = [];
     this.sustaining = false;
-    this.releaseOverrideMs = 0;
+    this.releaseOverrideMs = 0;     // a player's own release time; 0 = the instrument's
+    this.attackMs = 0;              // a player's own attack; 0 = the natural strike
     this.pedal = false;
     this.gain = 0.8;
     this.lim = new Limiter(sampleRate);
@@ -97,6 +102,7 @@ class PianoEngine extends AudioWorkletProcessor {
       case 'pedal': this.setPedal(!!m.down); break;
       case 'all': this.voices = []; this.pedal = false; break;
       case 'release': this.releaseOverrideMs = Math.max(0, +m.ms || 0); break;
+      case 'attack': this.attackMs = Math.max(0, Math.min(2000, +m.ms || 0)); break;
       case 'gain': this.gain = Math.max(0, Math.min(2, +m.g || 0)); break;
       default: break;
     }
@@ -135,16 +141,25 @@ class PianoEngine extends AudioWorkletProcessor {
       amp: Math.pow(10, gainDb / 20) * weight,
       env: 1, releasing: false, relStep: 0, held: true, keyoff: false,
       v, t0: currentTime,
-      lp, l1: 0, r1: 0, attack: 0
+      lp, l1: 0, r1: 0, attack: 0, attLen: this.attackSamples()
     });
+  }
+
+  /* The click guard is 48 samples (~1 ms at 48 kHz) and is always there; a
+     player who asks for an attack gets that instead, as a straight fade in
+     over the head of the sample. Captured per voice at note-on, so turning
+     the knob never jumps a note that is already sounding. */
+  attackSamples() {
+    const asked = Math.round(this.attackMs * sampleRate / 1000);
+    return asked > MIN_ATTACK ? asked : MIN_ATTACK;
   }
 
   /* §2 — releaseMs is the time to silence: the zone's, else by register */
   releaseMsFor(z) {
     if (this.releaseOverrideMs > 0) return this.releaseOverrideMs;
     if (z.releaseMs > 0) return z.releaseMs;
-    if (this.sustaining) return 450;
-    return z.rootNote < 48 ? 320 : z.rootNote < 72 ? 230 : 150;
+    if (this.sustaining) return 600;
+    return z.rootNote < 48 ? 420 : z.rootNote < 72 ? 300 : 200;
   }
 
   /* §3 — the sound of the damper: one key-off sample per note, as its own
@@ -171,7 +186,7 @@ class PianoEngine extends AudioWorkletProcessor {
       ratio: Math.pow(2, (n - best.rootNote) / 12) * (this.bankSr / sampleRate),
       amp: Math.pow(10, gainDb / 20),
       env: 1, releasing: false, relStep: 0, held: false, keyoff: true,
-      v, t0: currentTime, lp: 0, l1: 0, r1: 0, attack: 64
+      v, t0: currentTime, lp: 0, l1: 0, r1: 0, attack: 0, attLen: MIN_ATTACK
     });
   }
 
@@ -235,7 +250,7 @@ class PianoEngine extends AudioWorkletProcessor {
     const L = out[0], R = out[1] || out[0], N = L.length;
     L.fill(0); if (R !== L) R.fill(0);
     if (this.voices.length) {
-      const g = this.gain, ATT = 48;
+      const g = this.gain;
       for (let k = this.voices.length - 1; k >= 0; k--) {
         const vc = this.voices[k];
         const sl = vc.s.L, sr = vc.s.R || vc.s.L, len = vc.s.len;
@@ -256,7 +271,7 @@ class PianoEngine extends AudioWorkletProcessor {
           let xr = cub(sr[im], sr[i0], sr[i0 + 1], sr[i2]) * I16;
           if (lp) { l1 += lp * (xl - l1); r1 += lp * (xr - r1); xl = l1; xr = r1; }
           let a = vc.amp * env * g;
-          if (vc.attack < ATT) { a *= vc.attack / ATT; vc.attack++; }
+          if (vc.attack < vc.attLen) { a *= vc.attack / vc.attLen; vc.attack++; }
           L[i] += xl * a; R[i] += xr * a;
           pos += vc.ratio;
           if (vc.releasing) { env *= vc.relStep; if (env < 1e-4) { dead = true; break; } }   // gone below -80 dB

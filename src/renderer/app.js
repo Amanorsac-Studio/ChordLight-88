@@ -1445,12 +1445,21 @@
 
   /* Audio inputs only get names once the page has been allowed to use one,
      so both lists are (re)built after any successful capture too. */
-  function fillInputs(sel, devs, want, noneLabel) {
+  /* `offLabel`, where a select has one, is a real choice and not just the
+     absence of a device: the keyboard input needs it, because a player using
+     a built-in sound wants the line-in out of the clip altogether rather
+     than open and silent. */
+  function fillInputs(sel, devs, want, noneLabel, offLabel) {
     const keep = sel.value;
     sel.innerHTML = '';
     const def = document.createElement('option');
     def.value = ''; def.textContent = noneLabel;
     sel.appendChild(def);
+    if (offLabel) {
+      const off = document.createElement('option');
+      off.value = 'off'; off.textContent = offLabel;
+      sel.appendChild(off);
+    }
     devs.forEach((d, i) => {
       const o = document.createElement('option');
       o.value = d.deviceId;
@@ -1463,7 +1472,7 @@
     let devs = [];
     try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); }
     catch { devs = []; }
-    fillInputs(audioInSel, devs, audioInput, 'Default input');
+    fillInputs(audioInSel, devs, audioInput, 'Default input', 'Off — built-in sound only');
     fillInputs(vocalInSel, devs, vocalInput, 'None');
   }
   soundSel.addEventListener('change', () => { videoSound = soundSel.value; store({ videoSound }); });
@@ -1543,8 +1552,9 @@
      instrument sound, or a Mac that cannot capture one, still records music.
      It runs on its own always-on context for low latency and hands the mix
      a stream, the same way a system-sound capture does. */
-  const PIANO = { on: false, bank: 'off', ctx: null, node: null, gain: null, dest: null, ready: false, loading: null, level: 80, gen: 0 };
-  const soundSeg = $('soundseg'), soundVol = $('soundvol');
+  const PIANO = { on: false, bank: 'off', ctx: null, node: null, gain: null, dest: null, ready: false, loading: null,
+                  level: 80, attack: 0, release: 0, gen: 0 };   // attack/release in ms, 0 = the instrument's own
+  const soundSeg = $('soundseg'), soundVol = $('soundvol'), attSlider = $('attack'), relSlider = $('release');
   /* the instruments that ship — Amanorsac .jmi bundles under sounds/<id>/ */
   const BANKS = {
     grand:     { name: 'Grand 1',    dir: 'sounds/grand' },
@@ -1628,6 +1638,7 @@
       gain.connect(dest);
       if (PIANO.gen !== gen) { ctx.close(); return; }
       Object.assign(PIANO, { ctx, node, gain, dest, ready: true });
+      sendShape();                 // the attack and release the player set, on the new engine
       toast('Loading ' + BANKS[id].name + '…');
       await ctx.resume().catch(() => {});
       await loadBank(ctx, node, id, gen);
@@ -1655,6 +1666,32 @@
     PIANO.level = +soundVol.value;
     if (PIANO.gain) PIANO.gain.gain.setTargetAtTime(PIANO.level / 100, PIANO.ctx.currentTime, 0.02);
     store({ soundLevel: PIANO.level });
+  });
+
+  /* ---------- Attack and release, by hand ----------
+     Both are in milliseconds and both have a "Natural" position at zero,
+     which hands the decision back to the instrument: its own releaseMs where
+     the bundle states one, otherwise this engine's time-to-silence by
+     register. Attack at zero is the hammer as recorded; above zero the head
+     of the sample fades in, which is how you get a swell out of a piano.
+     Captured per note at note-on, so moving either slider never jumps a note
+     that is already sounding. */
+  const shapeLabel = (ms, zeroWord) => (ms > 0 ? ms + ' ms' : zeroWord);
+  function sendShape() {
+    if (!PIANO.node) return;
+    PIANO.node.port.postMessage({ t: 'attack', ms: PIANO.attack });
+    PIANO.node.port.postMessage({ t: 'release', ms: PIANO.release });
+  }
+  function paintShape() {
+    attSlider.value = PIANO.attack; relSlider.value = PIANO.release;
+    $('attackv').textContent = shapeLabel(PIANO.attack, 'Natural');
+    $('releasev').textContent = shapeLabel(PIANO.release, 'Instrument');
+  }
+  attSlider.addEventListener('input', () => {
+    PIANO.attack = +attSlider.value; paintShape(); sendShape(); store({ pianoAttack: PIANO.attack });
+  });
+  relSlider.addEventListener('input', () => {
+    PIANO.release = +relSlider.value; paintShape(); sendShape(); store({ pianoRelease: PIANO.release });
   });
   /* every MIDI message the display sees — played live, or from the
      transport — reaches the piano too */
@@ -1850,7 +1887,10 @@
     }
     let hasVocal = false;
     if (wantInput || !MIX.recording) {
-      const keyStream = await openInput(audioInput, 'keyboard input');
+      /* 'off' is the player's word, not a missing device: the input is never
+         opened, so nothing of the room reaches the clip and the built-in
+         sound stands alone. */
+      const keyStream = audioInput === 'off' ? null : await openInput(audioInput, 'keyboard input');
       if (MIX.ctx !== ctx) { keyStream && keyStream.getTracks().forEach((t) => t.stop()); return; }   // torn down meanwhile
       if (keyStream) { MIX.streams.push(keyStream); ctx.createMediaStreamSource(keyStream).connect(keyGain); }
       if (vocalInput && vocalInput !== audioInput) {
@@ -1891,8 +1931,8 @@
      owns the graph for its duration. */
   function monitorInputs() {
     if (MIX.recording || WAV.on || PACK.on) return;
-    if (advOpen && !setup.hidden) { buildMix(null).catch(() => {}); mixNote.textContent = 'Meters live'; }
-    else { tearDownMix(); mixNote.textContent = 'Meters run while Advanced is open'; }
+    if (tab === 'sound' && !setup.hidden) { buildMix(null).catch(() => {}); mixNote.textContent = 'Meters live'; }
+    else { tearDownMix(); mixNote.textContent = 'Meters run while Sound is open'; }
   }
   [audioInSel, vocalInSel].forEach((sel) => sel.addEventListener('change', monitorInputs));
 
@@ -2208,7 +2248,7 @@
     const audioTrack = MIX.dest.stream.getAudioTracks()[0];
     const hasSound = !!sys || MIX.streams.length > 0 || MIX.piano;
     if (hasSound && audioTrack) tracks.push(audioTrack);
-    else if (videoSound !== 'none') toast('No sound source could be opened — picture only (turn on Sound › Upright piano for a built-in sound)');
+    else if (videoSound !== 'none') toast('No sound source could be opened — picture only (pick Grand, SP or EP on the title bar for a built-in sound)');
     const stream = new MediaStream(tracks);
     const stopAll = () => {
       stopFrames();
@@ -2522,24 +2562,36 @@
     if (BRIDGE.onTrial) BRIDGE.onTrial((st) => paintTrial(st));
   } else if (TRIAL.on) paintTrial(null);
 
-  const setup = $('setup'), setupbtn = $('setupbtn'), advanced = $('advanced'), advbtn = $('advbtn');
-  let advOpen = false;
-  function showAdvanced(v) {
-    advOpen = v;
-    advanced.hidden = !(v && !setup.hidden);
-    advbtn.setAttribute('aria-expanded', String(v));
-    advbtn.classList.toggle('on', v);
-    advbtn.textContent = v ? 'Advanced ▴' : 'Advanced ▾';
+  /* ---------- Setup, in tabs ----------
+     Play, Sound, Clip, Look. The drawer remembers which one you were on, so
+     a player who lives in Clip is not handed MIDI ports every time. The mix
+     meters are expensive — they hold inputs open — so they follow the Sound
+     tab rather than the drawer: open it and they run, leave it and they stop. */
+  const setup = $('setup'), setupbtn = $('setupbtn'), setupTabs = $('setuptabs');
+  const TABS = ['play', 'sound', 'clip', 'look'];
+  let tab = 'play';
+  function showTab(which) {
+    tab = TABS.includes(which) ? which : 'play';
+    for (const b of setupTabs.querySelectorAll('button[data-tab]')) {
+      const on = b.dataset.tab === tab;
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-selected', String(on));
+    }
+    for (const t of TABS) $('tab-' + t).hidden = t !== tab;
   }
+  setupTabs.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-tab]'); if (!b) return;
+    showTab(b.dataset.tab);
+    store({ setupTab: tab });
+    monitorInputs();
+  });
   setupbtn.addEventListener('click', () => {
     const open = setup.hidden;
     setup.hidden = !open;
     setupbtn.setAttribute('aria-expanded', String(open));
     setupbtn.classList.toggle('on', open);
-    showAdvanced(advOpen);
     monitorInputs();
   });
-  advbtn.addEventListener('click', () => { showAdvanced(!advOpen); store({ advanced: advOpen }); monitorInputs(); });
 
   $('modebtn').addEventListener('click', () => { mode = mode === 'dark' ? 'light' : 'dark'; applyTheme(); });
   ksize.addEventListener('input', (e) => {
@@ -2628,6 +2680,10 @@
        there yet) and off on Windows, where a DAW is usually making the sound */
     const soundDefault = (APPINFO && APPINFO.systemSound === false) ? 'grand' : 'off';
     setPiano(BANKS[settingsCache.sound] || settingsCache.sound === 'off' ? settingsCache.sound : soundDefault);
+    if (Number.isFinite(+settingsCache.pianoAttack)) PIANO.attack = Math.max(0, Math.min(400, +settingsCache.pianoAttack));
+    if (Number.isFinite(+settingsCache.pianoRelease)) PIANO.release = Math.max(0, Math.min(1500, +settingsCache.pianoRelease));
+    paintShape();
+    showTab(settingsCache.setupTab);
     if (typeof settingsCache.audioInput === 'string') audioInput = settingsCache.audioInput;
     if (typeof settingsCache.vocalInput === 'string') vocalInput = settingsCache.vocalInput;
     refreshInputs();
@@ -2668,7 +2724,6 @@
     if (Number.isFinite(+settingsCache.keyGain)) keyGainDb = Math.max(-24, Math.min(12, +settingsCache.keyGain));
     if (Number.isFinite(+settingsCache.vocGain)) vocGainDb = Math.max(-24, Math.min(12, +settingsCache.vocGain));
     keyGainEl.value = keyGainDb; vocGainEl.value = vocGainDb; gainFace();
-    showAdvanced(settingsCache.advanced === true);
     monitorInputs();
     if (settingsCache.velocity === 'on' || settingsCache.velocity === 'off') {
       velocity = settingsCache.velocity === 'on';

@@ -4,6 +4,24 @@ Written for the person using the app, not for the commit log.
 
 ## 2.0.6 — October 2026
 
+- **Setup is in tabs now.** Play, Sound, Clip and Look. The drawer had
+  grown to thirty-odd fields in one long row with an *Advanced* drawer
+  underneath, and changing the MIDI port meant reading past all of it.
+  Nothing was taken away — everything that was in Advanced is in one of the
+  four tabs — and Chordlight remembers which tab you were on.
+- **Attack and release, by hand.** Setup › Sound. *Release* is how long a
+  note takes to fall silent after you lift the key; left at *Instrument* the
+  sound decides, which is longer in the bass than at the top. *Attack* at
+  *Natural* is the hammer as it was recorded; wind it up and the note fades
+  in, which is how you get a swell out of a piano. Both take effect on the
+  next note, never on one that is already sounding.
+- **Notes hold a little longer.** The built-in instruments were cut off
+  slightly too soon when you lifted a key. The natural release is now about a
+  third longer across the keyboard.
+- **Keyboard input can be switched off.** Setup › Sound › Keyboard input now
+  has *Off — built-in sound only*, so a clip made with Grand, SP or EP
+  carries just the instrument and nothing of the room. Before, the only
+  choices were a device or the default one.
 - **Chordlight asks for your licence key again.** Every build since 2.0.1
   ran with the licence check switched off, because the store could not yet
   issue keys for it — anyone with the download could use it. From 2.0.6 the
@@ -12,7 +30,8 @@ Written for the person using the app, not for the commit log.
   About shows the status and frees the seat again with *Deactivate this
   computer*. The Free Trial edition is unchanged — seven days, no key, and
   it still never touches the internet.
-- **Three instruments, built in.** Setup › Sound: *Grand 1*, *SP Natural*
+- **Three instruments, built in.** On the title bar, beside the note
+  labels: *Own · Grand · SP · EP* — *Grand 1*, *SP Natural*
   and *Soft EP 1* — Amanorsac Studio's own sampled instruments (30 notes
   across the keyboard, 4–8 velocity layers each). They play from your
   keyboard and go into every clip, WAV and Chordlight file through the mix,

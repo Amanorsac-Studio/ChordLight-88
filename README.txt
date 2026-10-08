@@ -51,8 +51,10 @@ SOUND
 
 Own · Grand · SP · EP on the title bar: your own instrument, or one of
 the built-in sounds — heard through the computer and recorded into every
-clip. System sound capture ("what is playing") is available on Windows;
-on a Mac use the built-in sounds or an audio input.
+clip. Setup > Sound sets the level, and the Attack and Release of the
+built-in instruments; Keyboard input there can be set to Off so a clip
+carries the instrument alone. System sound capture ("what is playing") is
+available on Windows; on a Mac use the built-in sounds or an audio input.
 
 
 IF IT DOES NOT SEE YOUR KEYBOARD
