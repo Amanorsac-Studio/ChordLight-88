@@ -21,6 +21,7 @@
     "dist:dir": "electron-builder --dir",
     "dist:trial:win": "electron-builder --win --x64 --config electron-builder.trial.cjs",
     "dist:trial:mac": "electron-builder --mac --universal --config electron-builder.trial.cjs",
+    "dist:legacy:mac": "electron-builder --mac --universal --config electron-builder.legacy.cjs",
     "start:trial": "node -e \"process.env.CHORDLIGHT_EDITION='trial';require('child_process').spawn(require('electron'),['.'],{stdio:'inherit',env:process.env})\""
   },
   "devDependencies": {

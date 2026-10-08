@@ -2603,7 +2603,8 @@
       const v = document.querySelector('.wordmark span');
       if (v) v.textContent = 'Amanorsac Studio · v' + info.version;
       $('aboutversion').textContent = info.version;
-      $('aboutruntime').textContent = 'Electron ' + info.electron + ' · Chromium ' + info.chrome;
+      $('aboutruntime').textContent = 'Electron ' + info.electron + ' · Chromium ' + info.chrome
+        + (info.edition === 'legacy' ? ' · build for older Macs' : '');
       $('aboutprefs').textContent = info.preferencesFile;
       $('aboutsys').textContent = info.systemSound
         ? 'Available — Video sound › System records what is playing'

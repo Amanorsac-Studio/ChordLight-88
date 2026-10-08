@@ -300,3 +300,40 @@ moved to an AudioWorklet (wav-tap.js; ScriptProcessor kept as the fallback).
 The main window runs with backgroundThrottling off, and a power-save blocker
 holds while a video records.
 
+## A second Mac build for macOS 11 and 12, rather than leaving them behind
+
+Each Electron line carries a Chromium, and Chromium decides the oldest macOS
+it will start on. Electron 37 (Chromium 138) is the last line that runs on
+macOS 11 Big Sur and 12 Monterey; Electron 38 and up need macOS 13. That
+matters because 2.1 has to move to Electron 44 — it is the Core Audio tap in
+Chromium 152 that gives the Mac back "System — what is playing" without
+asking for the screen. Moving would quietly strand every church Mac still on
+11 or 12.
+
+The choice was between holding the whole product back on an old runtime,
+telling those customers to upgrade macOS, and building twice. Building twice
+won, because the app's own code is identical in both: the picture is drawn by
+`clip-draw.js`, the sound comes from `piano-engine.js`, and neither cares
+which Chromium is underneath. `electron-builder.legacy.cjs` therefore pins
+`electronVersion` to 37.10.3 and changes nothing else — same app id, same
+product name, same licence seat, same data folder. A customer on macOS 11
+downloads `Chordlight88Legacy-<version>-macOS.dmg` instead of the ordinary
+disk image and has Chordlight 88, not a lesser edition. About names the
+runtime so a support e-mail says which build is in front of us.
+
+What was checked before committing to it: the two pieces that could have
+broken on a newer Chromium both hold. `MediaStreamTrackGenerator`, which the
+clip thread uses to feed drawn frames to the recorder, is still present (it
+is Chromium-only and its spec replacement, `VideoTrackGenerator`, has not
+landed), and the AudioWorklet sampler behaves the same — on Chromium 141,
+ahead of this build's 138, A4 reads 441 Hz, Grand is playable 1.7 s after it
+is chosen, and a staccato note is silent by 400 ms. The WebCodecs recorder
+planned for 2.1 or 2.2 needs `VideoEncoder` and `AudioEncoder`, both of which
+are in 138 as well, so the legacy build will not be the thing that blocks it.
+
+The build is wired into CI behind a switch rather than run on every push: a
+macOS runner bills about six times a Windows one, and until 2.1 raises the
+floor the ordinary build is on Electron 33 and also starts on macOS 11, so
+this one is a rehearsal. "Also build the older-Mac disk image" on a manual
+run produces it. From 2.1 it becomes a release file and joins the matrix for
+every tag.

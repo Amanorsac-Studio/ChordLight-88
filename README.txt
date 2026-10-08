@@ -36,9 +36,15 @@ Uninstalling does not delete these. The free trial uses the same folder,
 so the full version picks up your settings and recordings.
 
 
-NO ACTIVATION
+YOUR LICENCE KEY
 
-There is no key and no account. It never connects to the internet.
+One key, two computers. The first time you open Chordlight it asks for the
+key on your My Apps page at amanorsac.studio. After that it works offline
+and checks in again whenever it can. About > Deactivate this computer frees
+the seat for another machine.
+
+The Free Trial edition needs no key: seven days, a minute at a time, and it
+never connects to the internet.
 
 
 SOUND

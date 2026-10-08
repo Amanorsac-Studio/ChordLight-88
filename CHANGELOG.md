@@ -4,6 +4,14 @@ Written for the person using the app, not for the commit log.
 
 ## 2.0.5 — October 2026
 
+- **Chordlight asks for your licence key again.** Every build since 2.0.1
+  ran with the licence check switched off, because the store could not yet
+  issue keys for it — anyone with the download could use it. From 2.0.5 the
+  full version asks for the key on your My Apps page the first time it
+  opens: one key, two computers, and it keeps working offline afterwards.
+  About shows the status and frees the seat again with *Deactivate this
+  computer*. The Free Trial edition is unchanged — seven days, no key, and
+  it still never touches the internet.
 - **Three instruments, built in.** Setup › Sound: *Grand 1*, *SP Natural*
   and *Soft EP 1* — Amanorsac Studio's own sampled instruments (30 notes
   across the keyboard, 4–8 velocity layers each). They play from your

@@ -12,7 +12,7 @@
   ; P17 / P21 / P22 — first page: what it is, that a key will be asked for and
   ; where it is, and the one permission prompt, explained.
   !define MUI_WELCOMEPAGE_TITLE "${PRODUCT_NAME} ${VERSION}"
-  !define MUI_WELCOMEPAGE_TEXT "An 88-key MIDI display that lights the notes you play, names the chord, and reads the Nashville number in your key — with three built-in sounds, so every clip has music.$\r$\n$\r$\nNo account, no activation: it never connects to the internet.$\r$\n$\r$\nWindows will ask once for permission — that is to place the application in Program Files, nothing else.$\r$\n$\r$\nAmanorsac Studio · amanorsac.studio"
+  !define MUI_WELCOMEPAGE_TEXT "An 88-key MIDI display that lights the notes you play, names the chord, and reads the Nashville number in your key — with three built-in sounds, so every clip has music.$\r$\n$\r$\nYou will need the licence key from your My Apps page at amanorsac.studio the first time you open it — one key, two computers.$\r$\n$\r$\nWindows will ask once for permission — that is to place the application in Program Files, nothing else.$\r$\n$\r$\nAmanorsac Studio · amanorsac.studio"
 
   ; P15 — the last page says exactly what went where, in text that can be
   ; selected and copied.
