@@ -45,6 +45,12 @@ let lastState = null;
  * ------------------------------------------------------------------ */
 const LOG_DIR = path.join(license.stateDir(), 'Logs');
 let recovered = null;
+/* The renderer's last reported step. A renderer that crashes leaves no
+   stack, so it says where it is before each risky call (BRIDGE.crumb) and
+   the main process keeps the latest; the crash log then names the step. */
+let lastCrumb = '';
+ipcMain.on('crumb', (_e, s) => { lastCrumb = String(s || '').slice(0, 240); });
+
 function writeLog(kind, details) {
   try {
     fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -58,7 +64,8 @@ function writeLog(kind, details) {
       `reason     ${details && details.reason}`,
       `exit code  ${details && details.exitCode}`,
       details && details.type ? `type       ${details.type}` : '',
-      details && details.name ? `name       ${details.name}` : ''
+      details && details.name ? `name       ${details.name}` : '',
+      lastCrumb ? `last step  ${lastCrumb}` : ''
     ].filter(Boolean);
     fs.writeFileSync(file, lines.join('\n') + '\n', 'utf8');
     return file;

@@ -2148,9 +2148,11 @@
     await ensureFrame();
     FRAME.rec = true; FRAME.fps = fps; FRAME.fed = 0;
     if (CW.mode === 'worker') {
+      crumb('video: MediaStreamTrackGenerator');
       const gen = new MediaStreamTrackGenerator({ kind: 'video' });
       clearInterval(CW.feedTimer); CW.feedTimer = 0; videoFeed();    // the feed follows the clip's rate
       CW.worker.postMessage({ t: 'snap', S: clipSnap() });
+      crumb('video: handing the frame writer to the clip thread');
       CW.worker.postMessage({ t: 'rec', writable: gen.writable, fps }, [gen.writable]);
       FRAME.track = gen;
       return new MediaStream([gen]);
@@ -2158,6 +2160,7 @@
     if (CLIPDRAW) CLIPDRAW.reset();
     drawFrame();
     runFrames();
+    crumb('video: canvas.captureStream (window host)');
     const stream = FRAME.canvas.captureStream(fps);
     FRAME.track = stream.getVideoTracks()[0];
     return stream;
@@ -2251,12 +2254,19 @@
      the one thing a drawn frame cannot carry. On Windows the loopback comes
      from the desktop capturer, asked for sound only; if that is refused, a
      screen capture is opened for its audio and its picture thrown away. */
+  /* A crashed renderer leaves no stack trace. Before each call that could
+     take the process down, say where we are; the main process writes the
+     last one into the crash log (About › Logs). Costs one IPC message. */
+  const crumb = (what) => { try { if (BRIDGE && BRIDGE.crumb) BRIDGE.crumb(what); } catch { /* never in the way */ } };
   async function systemAudio() {
     if (!BRIDGE || !systemSound) return null;   // never asks for the display on a Mac
-    try {
-      const st = await navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSource: 'desktop' } }, video: false });
-      const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
-    } catch { /* next */ }
+    /* There used to be a first attempt here: getUserMedia with
+       chromeMediaSource 'desktop' and no source id, the pre-handler way of
+       asking for desktop audio. On Electron 33 / Windows 11 that call does
+       not fail, it takes the renderer down — the 2.0.6 and 2.0.7 crash logs
+       both end at it ("last step: getUserMedia desktop audio"). It is gone.
+       The display-media handler in main.js is the one supported route to
+       the WASAPI loopback, and the request below reaches it directly. */
     /* The picture of this request is thrown away on the very next line — all
        it is carrying is the loopback audio — so it asks for the SCREEN, not
        this window. Window capture of a frameless window trips some graphics
@@ -2273,7 +2283,9 @@
     try {
       markCapture(true);
       BRIDGE.captureKind('screen');
+      crumb('system sound: getDisplayMedia screen + loopback');
       const st = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      crumb('system sound: display stream returned, stopping its picture');
       st.getVideoTracks().forEach((t) => t.stop());
       markCapture(false);
       const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
@@ -2285,12 +2297,16 @@
   async function buildStream() {
     const wantSystem = systemSound && (videoSound === 'system' || videoSound === 'both');
     const Q = QUALITY[videoQuality] || QUALITY.good;
+    crumb(`video: frames — host ${CW.mode || 'not yet'}, ${Q.fps} fps, sound=${videoSound}, piano=${PIANO.on ? PIANO.bank : 'off'}`);
     const picture = await startFrames(Q.fps);
+    crumb(`video: frames running on ${CW.mode}`);
     const tracks = [picture.getVideoTracks()[0]];
     let sys = null;
     if (wantSystem) { sys = await systemAudio(); if (!sys) toast('No system sound on this machine — inputs only'); }
+    crumb(`video: building the mix (system=${sys ? 'yes' : 'no'}, input=${audioInput || 'default'}, vocal=${vocalInput || 'none'})`);
     MIX.recording = true;
     await buildMix(sys ? sys.track : null);
+    crumb('video: mix built');
     const audioTrack = MIX.dest.stream.getAudioTracks()[0];
     const hasSound = !!sys || MIX.streams.length > 0 || MIX.piano;
     if (hasSound && audioTrack) tracks.push(audioTrack);
@@ -2319,6 +2335,7 @@
     const Q = QUALITY[videoQuality] || QUALITY.good;
     const base = `Chordlight video ${stamp()}`;
     if (TRIAL.on && BRIDGE && BRIDGE.trialTake) BRIDGE.trialTake();
+    crumb(`video: MediaRecorder ${mime} @ ${Q.vbps}`);
     VID.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Q.vbps, audioBitsPerSecond: Q.abps });
     VID.rec.ondataavailable = (e) => { if (e.data.size) VID.chunks.push(e.data); };
     VID.rec.onstop = async () => {
@@ -2334,6 +2351,7 @@
     if (alsoWav) startWav(base).catch((err) => toast('No WAV — ' + (err.message || err)));
     if (alsoPack) startPack(base, 'video').catch((err) => toast('No Chordlight file — ' + (err.message || err)));
     VID.rec.start(1000);
+    crumb('video: recording');
     if (BRIDGE && BRIDGE.recBusy) BRIDGE.recBusy(true);
     PREVIEW.box.classList.add('rec');
     VID.start = performance.now() / 1000;

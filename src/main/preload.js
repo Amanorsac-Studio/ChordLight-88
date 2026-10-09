@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld('chordlight', {
 
   /* video capture: which picture, and the raw source ids for the fallback path */
   captureKind: (kind) => ipcRenderer.send('capture:kind', kind),
+  /* where the renderer is, for the crash log (main.js lastCrumb) */
+  crumb: (s) => ipcRenderer.send('crumb', s),
   captureSources: () => ipcRenderer.invoke('capture:sources'),
 
   /* a .chordlight / .mid the OS asked us to open */

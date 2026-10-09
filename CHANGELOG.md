@@ -2,16 +2,17 @@
 
 Written for the person using the app, not for the commit log.
 
-## 2.0.7 — October 2026
+## 2.0.8 — October 2026
 
 - **Windows: pressing Video no longer restarts the window.** To record
-  "System — what is playing", Chordlight opens a capture purely for its
-  sound and throws the picture away at once. Since 2.0.4 it had been asking
-  for *this window* rather than the screen, and capturing a window with no
-  frame is the thing some graphics drivers refuse — which took the window
-  down and reloaded it. It asks for the screen again, as it did up to 2.0.3.
+  "System — what is playing", Chordlight used to make an old-style request
+  for desktop audio first, before the proper one. On Windows 11 that request
+  does not fail politely — it takes the window down, which then reloads
+  itself. That request is gone; the proper one (the screen's loopback,
+  picture discarded at once) is made directly, and it works. 2.0.6 and 2.0.7
+  both had this; if you have either, this is the update to take.
 - **And if a machine ever does that again, it only does it once.** Chordlight
-  now notices that the last Video press never came back, sets the clip to
+  notices when the last Video press never came back, sets the clip to
   *Inputs* and says so. After a second time it stops offering System sound on
   that computer altogether, the way it already does on a Mac.
 
