@@ -431,12 +431,16 @@ function allowSelfCapture() {
     callback(decide(permission, details));
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission, _origin, details) => decide(permission, details));
-  /* Which picture a display request gets. 'window' is this window and
-     nothing else. If Chromium cannot start a capture of the window on this
-     machine (frameless windows and some graphics drivers trip its window
-     capturer with "Error starting video capture"), the renderer asks for
-     'screen' — the display this window is on — and says so in a toast. */
-  let captureKind = 'window';
+  /* Which picture a display request gets. The renderer only ever wants the
+     audio — it stops the video track on the line after the request — so the
+     picture is the display this window is on, 'screen': the one source
+     Chromium starts reliably. Capturing the window itself, frameless, trips
+     some graphics drivers ("Error starting video capture") and takes the
+     renderer down; 2.0.4–2.0.6 asked for it and restarted on Windows.
+     The default is 'screen' too, so a display request that overtakes the
+     renderer's capture:kind message (a different pipe; order is not
+     promised) still gets the safe source. The picture is never kept. */
+  let captureKind = 'screen';
   ipcMain.on('capture:kind', (_e, kind) => { captureKind = kind === 'screen' ? 'screen' : 'window'; });
   ipcMain.handle('capture:sources', async () => {
     if (!SYSTEM_SOUND) return { window: null, screen: null };

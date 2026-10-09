@@ -2,6 +2,19 @@
 
 Written for the person using the app, not for the commit log.
 
+## 2.0.7 — October 2026
+
+- **Windows: pressing Video no longer restarts the window.** To record
+  "System — what is playing", Chordlight opens a capture purely for its
+  sound and throws the picture away at once. Since 2.0.4 it had been asking
+  for *this window* rather than the screen, and capturing a window with no
+  frame is the thing some graphics drivers refuse — which took the window
+  down and reloaded it. It asks for the screen again, as it did up to 2.0.3.
+- **And if a machine ever does that again, it only does it once.** Chordlight
+  now notices that the last Video press never came back, sets the clip to
+  *Inputs* and says so. After a second time it stops offering System sound on
+  that computer altogether, the way it already does on a Mac.
+
 ## 2.0.6 — October 2026
 
 - **Setup is in tabs now.** Play, Sound, Clip and Look. The drawer had

@@ -1409,16 +1409,47 @@
      On a machine without it the two System options are greyed and a saved
      System setting falls back to Inputs. */
   let systemSound = true;
+  let systemUnsafe = false;        // this machine has taken the window down asking for the display
+
+  /* Written synchronously, so it survives a renderer that dies mid-call.
+     localStorage is per-window and per-install, which is exactly the scope
+     wanted: the finding is about this machine's graphics driver. */
+  const CAPTURE_MARK = 'chordlight.capturing';
+  function markCapture(on) {
+    try { if (on) localStorage.setItem(CAPTURE_MARK, String(Date.now())); else localStorage.removeItem(CAPTURE_MARK); }
+    catch { /* private mode, or storage refused: the net is best-effort */ }
+  }
+  /* At startup: a mark still sitting there means the last attempt never
+     returned. Count it; at two, stop offering System here. */
+  function checkCaptureMark() {
+    let left = false, fails = 0;
+    try {
+      left = !!localStorage.getItem(CAPTURE_MARK);
+      fails = parseInt(localStorage.getItem('chordlight.capturefails') || '0', 10) || 0;
+      if (left) { fails += 1; localStorage.setItem('chordlight.capturefails', String(fails)); localStorage.removeItem(CAPTURE_MARK); }
+    } catch { return; }
+    if (!left) return;
+    systemUnsafe = fails >= 2;
+    if (videoSound === 'system' || videoSound === 'both') {
+      videoSound = 'input'; soundSel.value = videoSound; store({ videoSound });
+    }
+    toast(systemUnsafe
+      ? 'System sound closed the window twice on this computer — it is switched off here. The clip records your inputs and the built-in sound.'
+      : 'System sound closed the window last time — the clip is set to Inputs. Logs are in About.');
+    if (systemUnsafe) applySystemSound(false);
+  }
+
   function applySystemSound(on) {
     systemSound = !!on;
     [...soundSel.options].forEach((o) => {
       if (o.value !== 'system' && o.value !== 'both') return;
       o.disabled = !systemSound;
-      if (!systemSound && !o.textContent.includes('macOS 14.2')) o.textContent += ' — needs macOS 14.2+';
+      const note = systemUnsafe ? ' — not on this computer' : ' — needs macOS 14.2+';
+      if (!systemSound && !/ — (needs macOS|not on this)/.test(o.textContent)) o.textContent += note;
     });
     if (!systemSound && (videoSound === 'system' || videoSound === 'both')) {
       videoSound = 'input'; soundSel.value = videoSound; store({ videoSound });
-      toast('System sound is not available on this Mac yet — the clip records your inputs');
+      if (!systemUnsafe) toast('System sound is not available on this Mac yet — the clip records your inputs');
     }
   }
   const clipTitleEl = $('cliptitle'), clipKeysEl = $('clipkeys'), titleFontEl = $('titlefont'), titleSizeEl = $('titlesize'), titleSizeV = $('titlesizev');
@@ -2226,13 +2257,28 @@
       const st = await navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSource: 'desktop' } }, video: false });
       const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
     } catch { /* next */ }
+    /* The picture of this request is thrown away on the very next line — all
+       it is carrying is the loopback audio — so it asks for the SCREEN, not
+       this window. Window capture of a frameless window trips some graphics
+       drivers ("Error starting video capture") and takes the renderer down
+       with it; 2.0.4 switched this to 'window' while fixing the Mac, which
+       never asks for the display at all, so nothing on a Mac could show what
+       it did to Windows. It is back to 'screen', which is the robust source
+       and was what shipped up to 2.0.3.
+
+       The mark is the safety net. A renderer that dies inside the await
+       below never reaches a catch, so the only way to know it happened is to
+       write something before and look for it at the next launch. Two deaths
+       and System is withdrawn on this machine for good. */
     try {
-      BRIDGE.captureKind('window');
+      markCapture(true);
+      BRIDGE.captureKind('screen');
       const st = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       st.getVideoTracks().forEach((t) => t.stop());
+      markCapture(false);
       const t = st.getAudioTracks()[0]; if (t) return { track: t, stop: () => st.getTracks().forEach((x) => x.stop()) };
       st.getTracks().forEach((x) => x.stop());
-    } catch { /* none */ }
+    } catch { markCapture(false); }
     return null;
   }
 
@@ -2674,6 +2720,7 @@
     if (['none', 'system', 'input', 'both'].includes(settingsCache.videoSound)) videoSound = settingsCache.videoSound;
     soundSel.value = videoSound;
     if (BRIDGE && APPINFO) applySystemSound(APPINFO.systemSound !== false);
+    if (BRIDGE) checkCaptureMark();
     if (Number.isFinite(+settingsCache.soundLevel)) PIANO.level = Math.max(0, Math.min(100, +settingsCache.soundLevel));
     soundVol.value = PIANO.level;
     /* the built-in piano is on from the first run on a Mac (no system sound
